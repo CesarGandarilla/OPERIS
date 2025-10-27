@@ -1,18 +1,18 @@
 // src/constants/catalogos.js
 export const ROLES = [
   { label: "Selecciona un rol", value: "" },
-  { label: "Doctor", value: "doctor" },
-  { label: "Enfermero", value: "enfermero" },
-  { label: "CEyE", value: "ceye" },
+  { label: "Doctor", value: "Doctor" },
+  { label: "Enfermero", value: "Enfermero" },
+  { label: "CEyE", value: "CeYe" },
 ];
 
 export const DEPARTAMENTOS = [
   { label: "Selecciona un departamento", value: "" },
-  { label: "Urgencias", value: "urgencias" },
-  { label: "Quirófano", value: "quirofano" },
-  { label: "Hospitalización", value: "hospitalizacion" },
-  { label: "CEyE", value: "ceye" },
-  { label: "Laboratorio", value: "laboratorio" },
-  { label: "Imagenología", value: "imagenologia" },
+  { label: "Urgencias", value: "Urgencias" },
+  { label: "Quirófano", value: "Quirofano" },
+  { label: "Hospitalización", value: "Hospitalizacion" },
+  { label: "CEyE", value: "CeYe" },
+  { label: "Laboratorio", value: "Laboratorio" },
+  { label: "Imagenología", value: "Imagenologia" },
 
 ];

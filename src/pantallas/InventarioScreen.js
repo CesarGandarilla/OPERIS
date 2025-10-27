@@ -54,7 +54,7 @@ export default function InventarioScreen() {
     fetchInsumos();
   }, []);
 
-  // Abre el modal con valores “base” pero editables
+  
   const abrirCrear = () => {
     setNombre('');
     setCategoria('General');
@@ -64,7 +64,7 @@ export default function InventarioScreen() {
     setModalVisible(true);
   };
 
-  // Guardar (crear) con los valores del formulario
+  
   const crearInsumo = async () => {
     if (!nombre.trim()) return Alert.alert('Faltan datos', 'Escribe el nombre del insumo.');
     if (!codigo.trim()) return Alert.alert('Faltan datos', 'Escribe el código.');
@@ -216,13 +216,12 @@ export default function InventarioScreen() {
         />
       )}
 
-      {/* FAB -> abre modal de creación */}
+      
       <TouchableOpacity style={styles.fab} onPress={abrirCrear} activeOpacity={0.9}>
         <Ionicons name="add" size={28} color="#fff" />
         <Text style={styles.fabText}>Agregar</Text>
       </TouchableOpacity>
 
-      {/* MODAL: Formulario para crear antes de guardar */}
       <Modal
         visible={modalVisible}
         animationType="slide"

@@ -1,5 +1,6 @@
 // App.js
 import React from 'react';
+import { View, Text, StyleSheet, StatusBar } from 'react-native';
 import 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -74,7 +75,6 @@ function RootNavigator() {
   return user ? <Tabs /> : <AuthStack />;
 }
 
-
 export default function App() {
   return (
     <AuthProvider>
@@ -84,3 +84,12 @@ export default function App() {
     </AuthProvider>
   );
 }
+
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

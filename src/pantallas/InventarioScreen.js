@@ -1,5 +1,5 @@
 // src/pantallas/InventarioScreen.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  RefreshControl,
+  SafeAreaView,
 } from 'react-native';
+import Constants from 'expo-constants';
+import { Ionicons } from '@expo/vector-icons';
+import { tema } from '../tema';
+
 import { db } from '../firebase/inventarios';
 import { collection, getDocs, updateDoc, doc, deleteDoc, addDoc } from 'firebase/firestore';
-import { Ionicons } from '@expo/vector-icons';
 
 const CATS = ['General', 'Quirúrgico', 'Protección'];
 const ESTADOS = ['Normal', 'Bajo', 'Crítico'];
@@ -23,6 +28,7 @@ const ESTADOS = ['Normal', 'Bajo', 'Crítico'];
 export default function InventarioScreen() {
   const [insumos, setInsumos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [filtro, setFiltro] = useState('Todos');
 
@@ -54,7 +60,12 @@ export default function InventarioScreen() {
     fetchInsumos();
   }, []);
 
-  
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchInsumos();
+    setRefreshing(false);
+  }, []);
+
   const abrirCrear = () => {
     setNombre('');
     setCategoria('General');
@@ -64,7 +75,6 @@ export default function InventarioScreen() {
     setModalVisible(true);
   };
 
-  
   const crearInsumo = async () => {
     if (!nombre.trim()) return Alert.alert('Faltan datos', 'Escribe el nombre del insumo.');
     if (!codigo.trim()) return Alert.alert('Faltan datos', 'Escribe el código.');
@@ -123,9 +133,9 @@ export default function InventarioScreen() {
   };
 
   const coloresEstado = {
-    Normal: '#4CAF50',
-    Bajo: '#FFC107',
-    Crítico: '#F44336',
+    Normal: tema.colores?.ok || '#4CAF50',
+    Bajo: tema.colores?.warning || '#FFC107',
+    Crítico: tema.colores?.danger || '#F44336',
   };
 
   const insumosFiltrados = insumos.filter((i) => {
@@ -135,39 +145,56 @@ export default function InventarioScreen() {
     return coincideTexto && coincideCategoria;
   });
 
+  const EmptyState = () => (
+    <View style={styles.emptyWrap}>
+      <View style={styles.emptyIcon}>
+        <Ionicons name="cube-outline" size={36} color={tema.colores.sub} />
+      </View>
+      <Text style={styles.emptyTitle}>Sin resultados</Text>
+      <Text style={styles.emptyText}>
+        {search ? 'No hay insumos que coincidan con tu búsqueda.' : 'Aún no has agregado insumos.'}
+      </Text>
+    </View>
+  );
+
   const renderItem = ({ item }) => (
     <View style={styles.card}>
       <View style={styles.cardLeft}>
         <View style={styles.iconContainer}>
-          <Ionicons name="cube-outline" size={32} color="#bbb" />
+          <Ionicons name="cube-outline" size={28} color={tema.colores.sub} />
         </View>
       </View>
+
       <View style={styles.cardCenter}>
-        <Text style={styles.nombre}>{item.nombre}</Text>
+        <View style={styles.nameRow}>
+          <Text style={styles.nombre} numberOfLines={1}>{item.nombre}</Text>
+          <View style={[styles.dot, { backgroundColor: coloresEstado[item.estado] || '#999' }]} />
+        </View>
         <Text style={styles.categoria}>{item.categoria}</Text>
-        <View style={styles.estadoContainer}>
-          <View
-            style={[
-              styles.estadoBadge,
-              { backgroundColor: coloresEstado[item.estado] || '#999' },
-            ]}
-          >
-            <Text style={styles.estadoTexto}>{item.estado}</Text>
+        <View style={styles.badgesRow}>
+          <View style={[styles.badge, { backgroundColor: (coloresEstado[item.estado] + '22') || '#eee' }]}>
+            <Ionicons name="pulse-outline" size={14} color={coloresEstado[item.estado]} />
+            <Text style={[styles.badgeText, { color: coloresEstado[item.estado] }]}>{item.estado}</Text>
+          </View>
+          <View style={styles.badgeLight}>
+            <Ionicons name="pricetag-outline" size={14} color={tema.colores.sub} />
+            <Text style={[styles.badgeText, { color: tema.colores.sub }]}>{item.codigo}</Text>
           </View>
         </View>
       </View>
+
       <View style={styles.cardRight}>
-        <Text style={styles.stock}>Stock: {item.stock}</Text>
-        <Text style={styles.codigo}>{item.codigo}</Text>
+        <Text style={styles.stockLabel}>Stock</Text>
+        <Text style={styles.stockValue}>{item.stock}</Text>
         <View style={styles.botones}>
           <TouchableOpacity onPress={() => actualizarStock(item.id, (item.stock || 0) + 1)}>
-            <Ionicons name="add-circle-outline" size={22} color="#0a84ff" />
+            <Ionicons name="add-circle" size={22} color={tema.colores.teal} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => actualizarStock(item.id, Math.max(0, (item.stock || 0) - 1))}>
-            <Ionicons name="remove-circle-outline" size={22} color="#0a84ff" />
+            <Ionicons name="remove-circle" size={22} color={tema.colores.teal} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => eliminarInsumo(item.id)}>
-            <Ionicons name="trash-outline" size={22} color="#f44336" />
+            <Ionicons name="trash-outline" size={22} color={tema.colores.danger || '#f44336'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -175,53 +202,84 @@ export default function InventarioScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      {/* Encabezado */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Inventario</Text>
+    <SafeAreaView style={[styles.safe, { backgroundColor: tema.colores.fondo || '#f7f9fb' }]}>
+      <View style={[styles.container]}>
+        {/* Header (más padding top para que se vea siempre) */}
+        <View style={[styles.header, { borderBottomColor: tema.colores.border, marginTop: 8 }]}>
+          <View style={styles.headerLeft}>
+            <Text style={[styles.headerTitle, { color: tema.colores.teal }]}>Inventario</Text>
+            <View style={[styles.counterPill, { backgroundColor: tema.colores.teal + '22' }]}>
+              <Ionicons name="list-outline" size={14} color={tema.colores.teal} />
+              <Text style={[styles.counterText, { color: tema.colores.teal }]}>
+                {insumos.length}
+              </Text>
+            </View>
+          </View>
+          {/* Botón superior de agregar removido como pediste */}
+          <View style={{ width: 1 }} />
+        </View>
+
+        {/* Search */}
+        <View style={[styles.searchWrap, { borderColor: tema.colores.border, backgroundColor: '#fff' }]}>
+          <Ionicons name="search-outline" size={18} color={tema.colores.sub} />
+          <TextInput
+            placeholder="Buscar insumos..."
+            placeholderTextColor={tema.colores.sub}
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close" size={18} color={tema.colores.sub} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Filtros */}
+        <View style={styles.filterContainer}>
+          {['Todos', ...CATS].map((cat) => {
+            const active = filtro === cat;
+            return (
+              <TouchableOpacity
+                key={cat}
+                style={[
+                  styles.filterButton,
+                  { borderColor: tema.colores.border },
+                  active && { backgroundColor: tema.colores.teal, borderColor: tema.colores.teal },
+                ]}
+                onPress={() => setFiltro(cat)}
+              >
+                <Text style={[styles.filterText, active ? { color: '#fff' } : { color: tema.colores.texto || '#333' }]}>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Lista */}
+        {loading ? (
+          <Text style={{ textAlign: 'center', marginTop: 20, color: tema.colores.sub }}>Cargando...</Text>
+        ) : (
+          <FlatList
+            data={insumosFiltrados}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            ListEmptyComponent={<EmptyState />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={tema.colores.teal} />}
+            contentContainerStyle={{ paddingBottom: 120 }}
+          />
+        )}
+
+        {/* FAB (único botón de agregar) */}
+        <TouchableOpacity style={[styles.fab, { backgroundColor: tema.colores.teal }]} onPress={abrirCrear} activeOpacity={0.92}>
+          <Ionicons name="add" size={24} color="#fff" />
+          <Text style={styles.fabText}>Nuevo</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Búsqueda */}
-      <TextInput
-        placeholder="Buscar insumos..."
-        style={styles.searchBar}
-        value={search}
-        onChangeText={setSearch}
-      />
-
-      {/* Filtros */}
-      <View style={styles.filterContainer}>
-        {['Todos', ...CATS].map((cat) => (
-          <TouchableOpacity
-            key={cat}
-            style={[styles.filterButton, filtro === cat && styles.filterButtonActive]}
-            onPress={() => setFiltro(cat)}
-          >
-            <Text style={[styles.filterText, filtro === cat && styles.filterTextActive]}>
-              {cat}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Lista */}
-      {loading ? (
-        <Text style={{ textAlign: 'center', marginTop: 20 }}>Cargando...</Text>
-      ) : (
-        <FlatList
-          data={insumosFiltrados}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 120 }}
-        />
-      )}
-
-      
-      <TouchableOpacity style={styles.fab} onPress={abrirCrear} activeOpacity={0.9}>
-        <Ionicons name="add" size={28} color="#fff" />
-        <Text style={styles.fabText}>Agregar</Text>
-      </TouchableOpacity>
-
+      {/* MODAL */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -230,10 +288,15 @@ export default function InventarioScreen() {
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalRoot}
+          style={[styles.modalRoot, { backgroundColor: '#fff' }]}
         >
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Nuevo insumo</Text>
+          {/* Header modal */}
+          <View style={[styles.modalHeader, { borderBottomColor: tema.colores.border }]}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setModalVisible(false)}>
+              <Ionicons name="chevron-back" size={22} color={tema.colores.sub} />
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: tema.colores.teal }]}>Nuevo insumo</Text>
+            <View style={{ width: 32 }} />
           </View>
 
           <ScrollView contentContainerStyle={styles.modalBody}>
@@ -242,20 +305,28 @@ export default function InventarioScreen() {
               value={nombre}
               onChangeText={setNombre}
               placeholder="Ej. Bata estéril"
-              style={styles.input}
+              placeholderTextColor={tema.colores.sub}
+              style={[styles.input, { borderColor: tema.colores.border }]}
             />
 
             <Text style={styles.label}>Categoría</Text>
             <View style={styles.rowWrap}>
-              {CATS.map((c) => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.chip, categoria === c && styles.chipActive]}
-                  onPress={() => setCategoria(c)}
-                >
-                  <Text style={[styles.chipText, categoria === c && styles.chipTextActive]}>{c}</Text>
-                </TouchableOpacity>
-              ))}
+              {CATS.map((c) => {
+                const active = categoria === c;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    style={[
+                      styles.chip,
+                      { borderColor: tema.colores.border },
+                      active && { backgroundColor: tema.colores.teal, borderColor: tema.colores.teal },
+                    ]}
+                    onPress={() => setCategoria(c)}
+                  >
+                    <Text style={[styles.chipText, active ? { color: '#fff' } : { color: tema.colores.texto || '#333' }]}>{c}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             <Text style={styles.label}>Código</Text>
@@ -263,7 +334,8 @@ export default function InventarioScreen() {
               value={codigo}
               onChangeText={setCodigo}
               placeholder="Ej. BQ-01"
-              style={styles.input}
+              placeholderTextColor={tema.colores.sub}
+              style={[styles.input, { borderColor: tema.colores.border }]}
               autoCapitalize="characters"
             />
 
@@ -272,161 +344,201 @@ export default function InventarioScreen() {
               value={stock}
               onChangeText={setStock}
               placeholder="0"
-              style={styles.input}
+              placeholderTextColor={tema.colores.sub}
+              style={[styles.input, { borderColor: tema.colores.border }]}
               keyboardType="numeric"
             />
 
             <Text style={styles.label}>Estado</Text>
             <View style={styles.rowWrap}>
-              {ESTADOS.map((e) => (
-                <TouchableOpacity
-                  key={e}
-                  style={[styles.chip, estado === e && styles.chipActive]}
-                  onPress={() => setEstado(e)}
-                >
-                  <Text style={[styles.chipText, estado === e && styles.chipTextActive]}>{e}</Text>
-                </TouchableOpacity>
-              ))}
+              {ESTADOS.map((e) => {
+                const active = estado === e;
+                return (
+                  <TouchableOpacity
+                    key={e}
+                    style={[
+                      styles.chip,
+                      { borderColor: tema.colores.border },
+                      active && { backgroundColor: tema.colores.teal, borderColor: tema.colores.teal },
+                    ]}
+                    onPress={() => setEstado(e)}
+                  >
+                    <Text style={[styles.chipText, active ? { color: '#fff' } : { color: tema.colores.texto || '#333' }]}>{e}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </ScrollView>
 
-          <View style={styles.modalActions}>
-            <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={() => setModalVisible(false)}>
-              <Text style={styles.btnTextSecondary}>Cancelar</Text>
+          <View style={[styles.modalActions, { borderTopColor: tema.colores.border }]}>
+            <TouchableOpacity style={[styles.btn, styles.btnSecondary, { backgroundColor: '#fff', borderColor: tema.colores.border }]} onPress={() => setModalVisible(false)}>
+              <Text style={[styles.btnTextSecondary, { color: tema.colores.texto || '#333' }]}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={crearInsumo}>
+            <TouchableOpacity style={[styles.btn, styles.btnPrimary, { backgroundColor: tema.colores.teal }]} onPress={crearInsumo}>
               <Text style={styles.btnTextPrimary}>Guardar</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9f9f9', padding: 15 },
+  safe: {
+    flex: 1,
+    paddingTop: Platform.OS === 'android' ? Constants.statusBarHeight : 0, // asegura espacio bajo el status bar
+  },
+  container: { flex: 1, paddingHorizontal: 14, paddingBottom: 0 },
+
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 8,
     marginBottom: 10,
+    borderBottomWidth: 1,
   },
-  headerTitle: { fontSize: 20, fontWeight: 'bold' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerTitle: { fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
+  counterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  counterText: { fontSize: 12, fontWeight: '700' },
 
-  searchBar: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    fontSize: 16,
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginBottom: 10,
   },
-  filterContainer: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 },
+  searchInput: { flex: 1, fontSize: 16 },
+
+  filterContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   filterButton: {
-    backgroundColor: '#eee',
-    borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    marginBottom: 6,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: '#fff',
   },
-  filterButtonActive: { backgroundColor: '#0a84ff' },
-  filterText: { color: '#333', fontWeight: '500' },
-  filterTextActive: { color: '#fff' },
+  filterText: { fontWeight: '700' },
 
   card: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 12,
     marginBottom: 10,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
   },
-  cardLeft: { justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  iconContainer: { backgroundColor: '#f1f1f1', padding: 10, borderRadius: 10 },
+  cardLeft: { justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  iconContainer: { backgroundColor: '#f3f6f8', padding: 10, borderRadius: 12 },
   cardCenter: { flex: 1, justifyContent: 'center' },
-  nombre: { fontWeight: 'bold', fontSize: 15 },
-  categoria: { color: '#888', marginVertical: 2 },
-  estadoContainer: { marginTop: 4 },
-  estadoBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dot: { width: 8, height: 8, borderRadius: 999, opacity: 0.9 },
+  nombre: { fontWeight: '800', fontSize: 16 },
+  categoria: { color: '#8b8b8b', marginTop: 2 },
+  badgesRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
   },
-  estadoTexto: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
-  cardRight: { justifyContent: 'center', alignItems: 'flex-end' },
-  stock: { fontWeight: 'bold', fontSize: 14 },
-  codigo: { color: '#888', fontSize: 12 },
-  botones: { flexDirection: 'row', marginTop: 5, alignItems: 'center', gap: 6 },
+  badgeLight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#f3f6f8',
+  },
+  badgeText: { fontSize: 12, fontWeight: '700' },
 
-  // FAB
+  cardRight: { justifyContent: 'center', alignItems: 'flex-end', gap: 2, minWidth: 86 },
+  stockLabel: { fontSize: 11, color: '#9aa0a6' },
+  stockValue: { fontWeight: '900', fontSize: 18 },
+  botones: { flexDirection: 'row', marginTop: 8, alignItems: 'center', gap: 10 },
+
   fab: {
     position: 'absolute',
     right: 16,
     bottom: 24,
-    backgroundColor: '#0a84ff',
-    borderRadius: 28,
+    borderRadius: 999,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    height: 56,
+    height: 52,
     shadowColor: '#000',
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.18,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
     elevation: 6,
+    gap: 8,
   },
-  fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 16 },
+  fabText: { color: '#fff', fontWeight: '800' },
 
   // Modal
-  modalRoot: { flex: 1, backgroundColor: '#fff' },
-  modalHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  modalTitle: { fontSize: 18, fontWeight: 'bold' },
+  modalRoot: { flex: 1 },
+  modalHeader: {
+    height: 56,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+  },
+  iconBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
+  modalTitle: { fontSize: 18, fontWeight: '800' },
   modalBody: { padding: 16, paddingBottom: 24 },
-  label: { fontSize: 12, color: '#666', marginTop: 8, marginBottom: 4 },
+  label: { fontSize: 12, color: '#666', marginTop: 12, marginBottom: 6, fontWeight: '700' },
   input: {
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: '#ddd',
   },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#ddd',
     backgroundColor: '#fff',
   },
-  chipActive: {
-    backgroundColor: '#0a84ff',
-    borderColor: '#0a84ff',
-  },
-  chipText: { color: '#333', fontWeight: '600' },
-  chipTextActive: { color: '#fff' },
+  chipText: { fontWeight: '700' },
 
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 10,
-    padding: 16,
+    padding: 12,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
   },
-  btn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
-  btnPrimary: { backgroundColor: '#0a84ff' },
-  btnSecondary: { backgroundColor: '#eee' },
-  btnTextPrimary: { color: '#fff', fontWeight: 'bold' },
-  btnTextSecondary: { color: '#333', fontWeight: 'bold' },
+  btn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12 },
+  btnPrimary: {},
+  btnSecondary: { borderWidth: 1 },
+  btnTextPrimary: { color: '#fff', fontWeight: '800' },
+  btnTextSecondary: { fontWeight: '800' },
 });

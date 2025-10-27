@@ -1,19 +1,25 @@
-// Importar SDKs necesarios
-import { initializeApp } from "firebase/app";
+// src/firebase/inventarios.js
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import {
+  FIREBASE_API_KEY,
+  FIREBASE_AUTH_DOMAIN,
+  FIREBASE_PROJECT_ID,
+  FIREBASE_APP_ID,
+} from "@env";
 
-// Configuración de tu proyecto Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyDaYLc0ZOchAbNCiRLYLbHOl1TuOGuAXO4",
-  authDomain: "abcd-836d0.firebaseapp.com",
-  projectId: "abcd-836d0",
-  storageBucket: "abcd-836d0.firebasestorage.app",
-  messagingSenderId: "603057717907",
-  appId: "1:603057717907:web:31fa144014180a0ec10366"
+  apiKey: FIREBASE_API_KEY,
+  authDomain: FIREBASE_AUTH_DOMAIN,
+  projectId: FIREBASE_PROJECT_ID,
+  appId: FIREBASE_APP_ID,
 };
 
-// Inicializar Firebase
-const app = initializeApp(firebaseConfig);
+// ✅ Evita inicializar dos veces
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Exportar Firestore para usarlo en otros archivos
+// ✅ Exporta Firestore
 export const db = getFirestore(app);
+
+// ✅ (Opcional) exporta app si otras partes la necesitan
+export default app;

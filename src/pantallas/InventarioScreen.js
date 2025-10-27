@@ -1,3 +1,4 @@
+// src/pantallas/InventarioScreen.js
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -24,30 +25,34 @@ export default function InventarioScreen() {
     setLoading(true);
     try {
       const snapshot = await getDocs(insumoCollection);
-      const lista = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const lista = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setInsumos(lista);
     } catch (error) {
       console.error('Error al obtener insumos:', error);
       Alert.alert('Error', 'No se pudieron cargar los insumos.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
+    // console.log("Firestore projectId:", db.app.options.projectId);
     fetchInsumos();
   }, []);
 
   const agregarInsumo = async () => {
     const nuevo = {
       nombre: 'Nuevo insumo',
-      categoria: 'General',
+      categoria: 'General',   // coincide con filtros
       stock: 0,
       codigo: 'X-00',
       estado: 'Normal',
     };
     try {
-      await addDoc(insumoCollection, nuevo);
+      const ref = await addDoc(insumoCollection, nuevo);
+      // console.log('✅ Creado con id:', ref.id);
       await fetchInsumos();
+      Alert.alert('Listo', 'Insumo agregado.');
     } catch (e) {
       console.error('Error agregando insumo:', e);
       Alert.alert('Error', 'No se pudo agregar el insumo.');
@@ -91,9 +96,9 @@ export default function InventarioScreen() {
   };
 
   const insumosFiltrados = insumos.filter((i) => {
-    const coincideTexto = i.nombre.toLowerCase().includes(search.toLowerCase());
+    const coincideTexto = (i.nombre || '').toLowerCase().includes(search.toLowerCase());
     const coincideCategoria =
-      filtro === 'Todos' || i.categoria.toLowerCase() === filtro.toLowerCase();
+      filtro === 'Todos' || (i.categoria || '').toLowerCase() === filtro.toLowerCase();
     return coincideTexto && coincideCategoria;
   });
 
@@ -122,16 +127,10 @@ export default function InventarioScreen() {
         <Text style={styles.stock}>Stock: {item.stock}</Text>
         <Text style={styles.codigo}>{item.codigo}</Text>
         <View style={styles.botones}>
-          <TouchableOpacity
-            onPress={() => actualizarStock(item.id, item.stock + 1)}
-          >
+          <TouchableOpacity onPress={() => actualizarStock(item.id, item.stock + 1)}>
             <Ionicons name="add-circle-outline" size={22} color="#0a84ff" />
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() =>
-              actualizarStock(item.id, Math.max(0, item.stock - 1))
-            }
-          >
+          <TouchableOpacity onPress={() => actualizarStock(item.id, Math.max(0, item.stock - 1))}>
             <Ionicons name="remove-circle-outline" size={22} color="#0a84ff" />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => eliminarInsumo(item.id)}>
@@ -144,13 +143,9 @@ export default function InventarioScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Encabezado */}
+      {/* Encabezado (solo título) */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Inventario</Text>
-        <TouchableOpacity style={styles.addButton} onPress={agregarInsumo}>
-          <Ionicons name="add" size={22} color="white" />
-          <Text style={styles.addButtonText}>Agregar</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Barra de búsqueda */}
@@ -163,21 +158,13 @@ export default function InventarioScreen() {
 
       {/* Filtros */}
       <View style={styles.filterContainer}>
-        {['Todos', 'Quirúrgico', 'Protección'].map((cat) => (
+        {['Todos', 'General', 'Quirúrgico', 'Protección'].map((cat) => (
           <TouchableOpacity
             key={cat}
-            style={[
-              styles.filterButton,
-              filtro === cat && styles.filterButtonActive,
-            ]}
+            style={[styles.filterButton, filtro === cat && styles.filterButtonActive]}
             onPress={() => setFiltro(cat)}
           >
-            <Text
-              style={[
-                styles.filterText,
-                filtro === cat && styles.filterTextActive,
-              ]}
-            >
+            <Text style={[styles.filterText, filtro === cat && styles.filterTextActive]}>
               {cat}
             </Text>
           </TouchableOpacity>
@@ -192,9 +179,19 @@ export default function InventarioScreen() {
           data={insumosFiltrados}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: 120 }}  // espacio para el FAB
         />
       )}
+
+      {/* FAB: Botón flotante abajo-derecha */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={agregarInsumo}
+        activeOpacity={0.9}
+      >
+        <Ionicons name="add" size={28} color="#fff" />
+        <Text style={styles.fabText}>Agregar</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -208,15 +205,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   headerTitle: { fontSize: 20, fontWeight: 'bold' },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0a84ff',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  addButtonText: { color: 'white', fontWeight: 'bold', marginLeft: 5 },
+
   searchBar: {
     backgroundColor: '#fff',
     borderRadius: 10,
@@ -270,4 +259,28 @@ const styles = StyleSheet.create({
   stock: { fontWeight: 'bold', fontSize: 14 },
   codigo: { color: '#888', fontSize: 12 },
   botones: { flexDirection: 'row', marginTop: 5 },
+
+  // FAB
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 24,
+    backgroundColor: '#0a84ff',
+    borderRadius: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    height: 56,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  fabText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    marginLeft: 8,
+    fontSize: 16,
+  },
 });

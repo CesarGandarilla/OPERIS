@@ -8,16 +8,31 @@ import {
   TouchableOpacity,
   Alert,
   TextInput,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { db } from '../firebase/inventarios';
 import { collection, getDocs, updateDoc, doc, deleteDoc, addDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+
+const CATS = ['General', 'Quirúrgico', 'Protección'];
+const ESTADOS = ['Normal', 'Bajo', 'Crítico'];
 
 export default function InventarioScreen() {
   const [insumos, setInsumos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filtro, setFiltro] = useState('Todos');
+
+  // Modal + formulario para crear
+  const [modalVisible, setModalVisible] = useState(false);
+  const [nombre, setNombre] = useState('');
+  const [categoria, setCategoria] = useState('General');
+  const [codigo, setCodigo] = useState('');
+  const [stock, setStock] = useState('0');
+  const [estado, setEstado] = useState('Normal');
 
   const insumoCollection = collection(db, 'insumos');
 
@@ -36,21 +51,39 @@ export default function InventarioScreen() {
   };
 
   useEffect(() => {
-    // console.log("Firestore projectId:", db.app.options.projectId);
     fetchInsumos();
   }, []);
 
-  const agregarInsumo = async () => {
+  // Abre el modal con valores “base” pero editables
+  const abrirCrear = () => {
+    setNombre('');
+    setCategoria('General');
+    setCodigo('');
+    setStock('0');
+    setEstado('Normal');
+    setModalVisible(true);
+  };
+
+  // Guardar (crear) con los valores del formulario
+  const crearInsumo = async () => {
+    if (!nombre.trim()) return Alert.alert('Faltan datos', 'Escribe el nombre del insumo.');
+    if (!codigo.trim()) return Alert.alert('Faltan datos', 'Escribe el código.');
+    const stockNum = Number(stock);
+    if (Number.isNaN(stockNum) || stockNum < 0) {
+      return Alert.alert('Dato inválido', 'El stock debe ser un número mayor o igual a 0.');
+    }
+
     const nuevo = {
-      nombre: 'Nuevo insumo',
-      categoria: 'General',   // coincide con filtros
-      stock: 0,
-      codigo: 'X-00',
-      estado: 'Normal',
+      nombre: nombre.trim(),
+      categoria,
+      stock: stockNum,
+      codigo: codigo.trim(),
+      estado,
     };
+
     try {
-      const ref = await addDoc(insumoCollection, nuevo);
-      // console.log('✅ Creado con id:', ref.id);
+      await addDoc(insumoCollection, nuevo);
+      setModalVisible(false);
       await fetchInsumos();
       Alert.alert('Listo', 'Insumo agregado.');
     } catch (e) {
@@ -127,10 +160,10 @@ export default function InventarioScreen() {
         <Text style={styles.stock}>Stock: {item.stock}</Text>
         <Text style={styles.codigo}>{item.codigo}</Text>
         <View style={styles.botones}>
-          <TouchableOpacity onPress={() => actualizarStock(item.id, item.stock + 1)}>
+          <TouchableOpacity onPress={() => actualizarStock(item.id, (item.stock || 0) + 1)}>
             <Ionicons name="add-circle-outline" size={22} color="#0a84ff" />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => actualizarStock(item.id, Math.max(0, item.stock - 1))}>
+          <TouchableOpacity onPress={() => actualizarStock(item.id, Math.max(0, (item.stock || 0) - 1))}>
             <Ionicons name="remove-circle-outline" size={22} color="#0a84ff" />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => eliminarInsumo(item.id)}>
@@ -143,12 +176,12 @@ export default function InventarioScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Encabezado (solo título) */}
+      {/* Encabezado */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Inventario</Text>
       </View>
 
-      {/* Barra de búsqueda */}
+      {/* Búsqueda */}
       <TextInput
         placeholder="Buscar insumos..."
         style={styles.searchBar}
@@ -158,7 +191,7 @@ export default function InventarioScreen() {
 
       {/* Filtros */}
       <View style={styles.filterContainer}>
-        {['Todos', 'General', 'Quirúrgico', 'Protección'].map((cat) => (
+        {['Todos', ...CATS].map((cat) => (
           <TouchableOpacity
             key={cat}
             style={[styles.filterButton, filtro === cat && styles.filterButtonActive]}
@@ -179,19 +212,95 @@ export default function InventarioScreen() {
           data={insumosFiltrados}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 120 }}  // espacio para el FAB
+          contentContainerStyle={{ paddingBottom: 120 }}
         />
       )}
 
-      {/* FAB: Botón flotante abajo-derecha */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={agregarInsumo}
-        activeOpacity={0.9}
-      >
+      {/* FAB -> abre modal de creación */}
+      <TouchableOpacity style={styles.fab} onPress={abrirCrear} activeOpacity={0.9}>
         <Ionicons name="add" size={28} color="#fff" />
         <Text style={styles.fabText}>Agregar</Text>
       </TouchableOpacity>
+
+      {/* MODAL: Formulario para crear antes de guardar */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalRoot}
+        >
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Nuevo insumo</Text>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalBody}>
+            <Text style={styles.label}>Nombre</Text>
+            <TextInput
+              value={nombre}
+              onChangeText={setNombre}
+              placeholder="Ej. Bata estéril"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Categoría</Text>
+            <View style={styles.rowWrap}>
+              {CATS.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  style={[styles.chip, categoria === c && styles.chipActive]}
+                  onPress={() => setCategoria(c)}
+                >
+                  <Text style={[styles.chipText, categoria === c && styles.chipTextActive]}>{c}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Código</Text>
+            <TextInput
+              value={codigo}
+              onChangeText={setCodigo}
+              placeholder="Ej. BQ-01"
+              style={styles.input}
+              autoCapitalize="characters"
+            />
+
+            <Text style={styles.label}>Stock</Text>
+            <TextInput
+              value={stock}
+              onChangeText={setStock}
+              placeholder="0"
+              style={styles.input}
+              keyboardType="numeric"
+            />
+
+            <Text style={styles.label}>Estado</Text>
+            <View style={styles.rowWrap}>
+              {ESTADOS.map((e) => (
+                <TouchableOpacity
+                  key={e}
+                  style={[styles.chip, estado === e && styles.chipActive]}
+                  onPress={() => setEstado(e)}
+                >
+                  <Text style={[styles.chipText, estado === e && styles.chipTextActive]}>{e}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={() => setModalVisible(false)}>
+              <Text style={styles.btnTextSecondary}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={crearInsumo}>
+              <Text style={styles.btnTextPrimary}>Guardar</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -216,17 +325,19 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
     marginBottom: 10,
   },
-  filterContainer: { flexDirection: 'row', marginBottom: 10 },
+  filterContainer: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 },
   filterButton: {
     backgroundColor: '#eee',
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 6,
     marginRight: 8,
+    marginBottom: 6,
   },
   filterButtonActive: { backgroundColor: '#0a84ff' },
   filterText: { color: '#333', fontWeight: '500' },
   filterTextActive: { color: '#fff' },
+
   card: {
     flexDirection: 'row',
     backgroundColor: '#fff',
@@ -239,11 +350,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardLeft: { justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  iconContainer: {
-    backgroundColor: '#f1f1f1',
-    padding: 10,
-    borderRadius: 10,
-  },
+  iconContainer: { backgroundColor: '#f1f1f1', padding: 10, borderRadius: 10 },
   cardCenter: { flex: 1, justifyContent: 'center' },
   nombre: { fontWeight: 'bold', fontSize: 15 },
   categoria: { color: '#888', marginVertical: 2 },
@@ -258,7 +365,7 @@ const styles = StyleSheet.create({
   cardRight: { justifyContent: 'center', alignItems: 'flex-end' },
   stock: { fontWeight: 'bold', fontSize: 14 },
   codigo: { color: '#888', fontSize: 12 },
-  botones: { flexDirection: 'row', marginTop: 5 },
+  botones: { flexDirection: 'row', marginTop: 5, alignItems: 'center', gap: 6 },
 
   // FAB
   fab: {
@@ -277,10 +384,50 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 6,
   },
-  fabText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    marginLeft: 8,
+  fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 16 },
+
+  // Modal
+  modalRoot: { flex: 1, backgroundColor: '#fff' },
+  modalHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  modalTitle: { fontSize: 18, fontWeight: 'bold' },
+  modalBody: { padding: 16, paddingBottom: 24 },
+  label: { fontSize: 12, color: '#666', marginTop: 8, marginBottom: 4 },
+  input: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
+  rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+  },
+  chipActive: {
+    backgroundColor: '#0a84ff',
+    borderColor: '#0a84ff',
+  },
+  chipText: { color: '#333', fontWeight: '600' },
+  chipTextActive: { color: '#fff' },
+
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  btn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  btnPrimary: { backgroundColor: '#0a84ff' },
+  btnSecondary: { backgroundColor: '#eee' },
+  btnTextPrimary: { color: '#fff', fontWeight: 'bold' },
+  btnTextSecondary: { color: '#333', fontWeight: 'bold' },
 });

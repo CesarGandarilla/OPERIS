@@ -1,14 +1,12 @@
 // App.js
+// App.js
 import React from 'react';
-import { View, Text, StyleSheet, StatusBar } from 'react-native';
-import 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { Provider as PaperProvider } from 'react-native-paper'; // ✅ Importar aquí
 import { tema } from './src/tema';
-import { AntDesign } from "@expo/vector-icons";
-import { Feather } from '@expo/vector-icons';
-import { Ionicons } from '@expo/vector-icons';
+import { AntDesign, Feather, Ionicons } from '@expo/vector-icons';
 
 import PanelDeControlScreen from './src/pantallas/PanelDeControlScreen';
 import InventarioScreen from './src/pantallas/InventarioScreen';
@@ -47,11 +45,31 @@ function Tabs() {
         component={PanelDeControlScreen}
         options={{ tabBarLabel: 'Panel', tabBarIcon: ({ color }) => <Feather name="activity" size={20} color={color} /> }}
       />
-      <Tab.Screen name="Inventario" component={InventarioScreen} options={{ tabBarIcon: ({ color }) => <Ionicons name="document-text-outline" size={23} color={color} /> }} />
-      <Tab.Screen name="Solicitudes" component={SolicitudesScreen} options={{ tabBarIcon: ({ color }) => <AntDesign name="shopping-cart" size={22} color={color} /> }} />
-      <Tab.Screen name="Movimientos" component={MovimientosScreen} options={{ tabBarIcon: ({ color }) => <AntDesign name="history" size={20} color={color} /> }} />
-      <Tab.Screen name="Reportes" component={ReportesScreen} options={{ tabBarIcon: ({ color }) => <AntDesign name="bar-chart" size={22} color={color} /> }} />
-      <Tab.Screen name="Ajustes" component={AjustesScreen} options={{ tabBarIcon: ({ color }) => <AntDesign name="setting" size={20} color={color} /> }} />
+      <Tab.Screen
+        name="Inventario"
+        component={InventarioScreen}
+        options={{ tabBarIcon: ({ color }) => <Ionicons name="document-text-outline" size={23} color={color} /> }}
+      />
+      <Tab.Screen
+        name="Solicitudes"
+        component={SolicitudesScreen}
+        options={{ tabBarIcon: ({ color }) => <AntDesign name="shopping-cart" size={22} color={color} /> }}
+      />
+      <Tab.Screen
+        name="Movimientos"
+        component={MovimientosScreen}
+        options={{ tabBarIcon: ({ color }) => <AntDesign name="history" size={20} color={color} /> }}
+      />
+      <Tab.Screen
+        name="Reportes"
+        component={ReportesScreen}
+        options={{ tabBarIcon: ({ color }) => <AntDesign name="bar-chart" size={22} color={color} /> }}
+      />
+      <Tab.Screen
+        name="Ajustes"
+        component={AjustesScreen}
+        options={{ tabBarIcon: ({ color }) => <AntDesign name="setting" size={20} color={color} /> }}
+      />
     </Tab.Navigator>
   );
 }
@@ -66,30 +84,21 @@ function AuthStack() {
 }
 
 function RootNavigator() {
-  const auth = useAuth();               // podría ser defaultValue si hay duplicado
-  if (!auth) return null;               // defensa extra, por si acaso
+  const auth = useAuth();
+  if (!auth) return null;
 
-  const { user, logout } = useAuth() || {};
-  console.log("[RootNavigator] user:", user?.uid || null);
-
+  const { user } = useAuth() || {};
   return user ? <Tabs /> : <AuthStack />;
 }
 
 export default function App() {
   return (
-    <AuthProvider>
+   <AuthProvider>
+    <PaperProvider>
       <NavigationContainer>
         <RootNavigator />
       </NavigationContainer>
-    </AuthProvider>
+    </PaperProvider>
+  </AuthProvider>
   );
 }
-
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

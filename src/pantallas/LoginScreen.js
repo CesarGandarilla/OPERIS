@@ -26,13 +26,9 @@ export default function LoginScreen({ navigation }) {
       return;
     }
     try {
-      const datos = await login({ email, password });
-
-      navigation.replace("PanelDeControlScreen", {
-      usuario: datos.user,      
-      rol: datos.role,          
-      });
-       
+      // login actualiza el contexto (user) y RootNavigator decide si muestra Tabs o AuthStack
+      await login({ email, password });
+      // ❌ ya no usamos navigation.replace aquí
     } catch (e) {
       Alert.alert("Error", e.message);
     }
@@ -43,7 +39,10 @@ export default function LoginScreen({ navigation }) {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.container}>
           {/* Fondo superior con degradado */}
           <LinearGradient
@@ -55,7 +54,12 @@ export default function LoginScreen({ navigation }) {
             <Text style={styles.title}>¡Holaaaaaaa de nuevo!</Text>
             <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
 
-            <Svg height="120" width="100%" viewBox="0 0 1440 320" style={styles.wave}>
+            <Svg
+              height="120"
+              width="100%"
+              viewBox="0 0 1440 320"
+              style={styles.wave}
+            >
               <Path
                 fill="#00c6a7"
                 d="M0,288L60,272C120,256,240,224,360,197.3C480,171,600,149,720,154.7C840,160,960,192,1080,197.3C1200,203,1320,181,1380,170.7L1440,160V320H0Z"
@@ -87,13 +91,23 @@ export default function LoginScreen({ navigation }) {
               onPress={onLogin}
               disabled={loading}
             >
-              <Text style={styles.buttonText}>{loading ? "Entrando..." : "Entrar"}</Text>
+              <Text style={styles.buttonText}>
+                {loading ? "Entrando..." : "Entrar"}
+              </Text>
             </TouchableOpacity>
 
             {/* Texto de registro con navegación */}
-            <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 15 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "center",
+                marginTop: 15,
+              }}
+            >
               <Text style={styles.register}>¿No tienes cuenta? </Text>
-              <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("Register")}
+              >
                 <Text style={styles.link}>Regístrate aquí</Text>
               </TouchableOpacity>
             </View>
@@ -106,7 +120,12 @@ export default function LoginScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f7f9fc" },
-  headerBackground: { height: 260, justifyContent: "center", alignItems: "center", position: "relative" },
+  headerBackground: {
+    height: 260,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
   wave: { position: "absolute", bottom: -1 },
   title: { color: "white", fontSize: 28, fontWeight: "bold", marginTop: 50 },
   subtitle: { color: "white", fontSize: 16, opacity: 0.9, marginTop: 6 },
@@ -121,8 +140,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
   },
-  input: { borderWidth: 1, borderColor: "#e5e5e5", borderRadius: 12, padding: 13, marginBottom: 15, fontSize: 15 },
-  button: { backgroundColor: "#00bfa5", borderRadius: 12, paddingVertical: 13, alignItems: "center", marginTop: 5 },
+  input: {
+    borderWidth: 1,
+    borderColor: "#e5e5e5",
+    borderRadius: 12,
+    padding: 13,
+    marginBottom: 15,
+    fontSize: 15,
+  },
+  button: {
+    backgroundColor: "#00bfa5",
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: "center",
+    marginTop: 5,
+  },
   buttonText: { color: "white", fontWeight: "600", fontSize: 16 },
   register: { color: "#666" },
   link: { color: "#00bfa5", fontWeight: "600" },

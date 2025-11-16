@@ -1,29 +1,65 @@
 // src/pantallas/PanelDeControlScreen.js
-import React from "react";
-import { SafeAreaView, StyleSheet, View, Text } from "react-native";
+import React, { useState, useEffect } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { StyleSheet, View, Text } from "react-native";
 import { tema } from "../tema";
 import HeaderTop from "../componentes/HeaderTop";
 import StatCard from "../componentes/StatCard";
 import QuickAction from "../componentes/QuickAction";
 import { AntDesign } from "@expo/vector-icons";
-import { Feather } from '@expo/vector-icons';
-import {Ionicons} from '@expo/vector-icons';
+import { Feather } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
-
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "../firebase/inventarios";
 
 const PanelDeControlScreen = () => {
   const { user } = useAuth();
+
+  const [insumosCriticos, setInsumosCriticos] = useState(0);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "insumos"), (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      let count = 0;
+
+      data.forEach((item) => {
+        const stock = item.stock ?? 0;
+        const stockCritico = item.stockCritico ?? 0;
+        const stockBajo = stockCritico * 2;
+
+        // Mismos rangos que en InsumoCard:
+        // 0 = Agotado
+        // 1-critico = Crítico
+        // critico+1 - stockBajo = Bajo
+
+        if (stock === 0 || stock <= stockCritico || (stock > stockCritico && stock <= stockBajo)) {
+          count += 1;
+        }
+      });
+
+      setInsumosCriticos(count);
+    });
+
+    return unsub;
+  }, []);
+
   return (
     <SafeAreaView style={styles.screen}>
       <HeaderTop saludo="Hola, CEyE" titulo="Panel de Control" />
 
       <View style={styles.gridWrapper}>
         <View style={styles.grid}>
+          {/* ---- STOCK BAJO / CRÍTICO ----- */}
           <StatCard
             icon={<Feather name="alert-circle" size={24} color="#F59E0B" />}
             iconBackgroundColor="#FFFBEB"
-            titulo="Stock Bajo"
-            valor={"x"}
+            titulo="Stock Crítico"
+            valor={insumosCriticos.toString()}
             subtitulo="items críticos"
           />
 

@@ -8,14 +8,19 @@ import {
   StyleSheet,
   Modal,
   Alert,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
+  Platform,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker"; // npm install @react-native-picker/picker
+import { Picker } from "@react-native-picker/picker";
 import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
 
 export default function AgregarInsumoModal({ visible, onClose }) {
   const [nombre, setNombre] = useState("");
   const [cantidad, setCantidad] = useState("");
+  const [stockCritico, setStockCritico] = useState("");
   const [categoria, setCategoria] = useState("");
 
   const categorias = [
@@ -51,89 +56,161 @@ export default function AgregarInsumoModal({ visible, onClose }) {
     }
   };
 
-  const guardarInsumo = async () => {
-  if (!nombre || !cantidad || !categoria) {
-    Alert.alert("Error", "Por favor llena todos los campos");
-    return;
-  }
-
-  try {
-    const codigo = await generarCodigo(categoria);
-    const stockInicial = parseInt(cantidad);
-
-    // Guardar el insumo principal
-    const docRef = await addDoc(collection(db, "insumos"), {
-      nombre,
-      stock: stockInicial, // <-- ahora es stock
-      codigo,
-      categoria,
-      estado: "Normal",
-      fechaIngreso: new Date(),
-    });
-
-    // Guardar movimiento inicial en subcolección "movimientos"
-    await addDoc(collection(db, "insumos", docRef.id, "movimientos"), {
-      tipo: "Entrada",
-      cantidad: stockInicial,
-      fecha: new Date(),
-      usuario: "Sistema", // puedes reemplazarlo por el usuario que esté logueado
-      descripcion: "Ingreso inicial de insumo",
-    });
-
-    Alert.alert("Éxito", `Insumo agregado con código: ${codigo}`);
-    onClose();
+  const limpiarCampos = () => {
     setNombre("");
     setCantidad("");
     setCategoria("");
-  } catch (error) {
-    console.error("Error al agregar insumo:", error);
-    Alert.alert("Error", "No se pudo guardar el insumo");
-  }
-};
+    setStockCritico("");
+  };
+
+  const guardarInsumo = async () => {
+    if (!nombre || !cantidad || !categoria || !stockCritico) {
+      Alert.alert("Error", "Por favor llena todos los campos");
+      return;
+    }
+
+    const stockInicial = parseInt(cantidad);
+    const stockCriticoNum = parseInt(stockCritico);
+
+    if (isNaN(stockInicial) || isNaN(stockCriticoNum)) {
+      Alert.alert("Error", "Cantidad y stock crítico deben ser números");
+      return;
+    }
+
+    if (stockCriticoNum <= 0) {
+      Alert.alert(
+        "Error",
+        "El stock crítico debe ser un número mayor a cero"
+      );
+      return;
+    }
+
+    try {
+      const codigo = await generarCodigo(categoria);
+
+      // Guardar el insumo principal
+      const docRef = await addDoc(collection(db, "insumos"), {
+        nombre,
+        stock: stockInicial,
+        stockCritico: stockCriticoNum,
+        codigo,
+        categoria,
+        estado: "Normal",
+        fechaIngreso: new Date(),
+      });
+
+      // Movimiento inicial
+      await addDoc(collection(db, "insumos", docRef.id, "movimientos"), {
+        tipo: "Entrada",
+        cantidad: stockInicial,
+        fecha: new Date(),
+        usuario: "Sistema",
+        descripcion: "Ingreso inicial de insumo",
+      });
+
+      Alert.alert("Éxito", `Insumo agregado con código: ${codigo}`);
+      limpiarCampos();
+      onClose();
+    } catch (error) {
+      console.error("Error al agregar insumo:", error);
+      Alert.alert("Error", "No se pudo guardar el insumo");
+    }
+  };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
-          <Text style={styles.title}>Agregar nuevo insumo</Text>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.overlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.keyboardView}
+          >
+            <View style={styles.modalContainer}>
+              <Text style={styles.title}>Agregar nuevo insumo</Text>
 
-          <TextInput
-            placeholder="Nombre del insumo"
-            style={styles.input}
-            value={nombre}
-            onChangeText={setNombre}
-          />
-          <TextInput
-            placeholder="Cantidad"
-            style={styles.input}
-            keyboardType="numeric"
-            value={cantidad}
-            onChangeText={setCantidad}
-          />
+              {/* Nombre */}
+              <Text style={styles.label}>Nombre del insumo</Text>
+              <TextInput
+                placeholder="Ej. Gasa estéril 10x10"
+                placeholderTextColor="#666"
+                style={styles.input}
+                value={nombre}
+                onChangeText={setNombre}
+              />
 
-          {/* Picker de categorías */}
-          <View style={[styles.input, { paddingHorizontal: 0 }]}>
-            <Picker
-              selectedValue={categoria}
-              onValueChange={(itemValue) => setCategoria(itemValue)}
-            >
-              <Picker.Item label="Selecciona una categoría" value="" />
-              {categorias.map((c) => (
-                <Picker.Item key={c.prefijo} label={c.nombre} value={c.nombre} />
-              ))}
-            </Picker>
-          </View>
+              {/* Cantidad inicial */}
+              <Text style={styles.label}>Stock inicial</Text>
+              <TextInput
+                placeholder="Ej. 150"
+                placeholderTextColor="#666"
+                style={styles.input}
+                keyboardType="numeric"
+                value={cantidad}
+                onChangeText={setCantidad}
+              />
 
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelText}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveButton} onPress={guardarInsumo}>
-              <Text style={styles.saveText}>Guardar</Text>
-            </TouchableOpacity>
-          </View>
+              {/* Stock crítico */}
+              <Text style={styles.label}>Stock crítico (mínimo de seguridad)</Text>
+              <TextInput
+                placeholder="Ej. 30"
+                placeholderTextColor="#666"
+                style={styles.input}
+                keyboardType="numeric"
+                value={stockCritico}
+                onChangeText={setStockCritico}
+              />
+
+              {/* Categoría */}
+              <Text style={styles.label}>Departamento / categoría</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={categoria}
+                  onValueChange={(itemValue) => setCategoria(itemValue)}
+                  style={styles.picker}
+                >
+                  <Picker.Item
+                    label="Selecciona una categoría"
+                    value=""
+                    color="#666"
+                  />
+                  {categorias.map((c) => (
+                    <Picker.Item
+                      key={c.prefijo}
+                      label={c.nombre}
+                      value={c.nombre}
+                      color="#000"
+                    />
+                  ))}
+                </Picker>
+              </View>
+
+              {/* Botones */}
+              <View style={styles.buttonContainer}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => {
+                    limpiarCampos();
+                    onClose();
+                  }}
+                >
+                  <Text style={styles.cancelText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={guardarInsumo}
+                >
+                  <Text style={styles.saveText}>Guardar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 }
@@ -142,6 +219,12 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  keyboardView: {
+    flex: 1,
+    width: "100%",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -156,19 +239,39 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 15,
     textAlign: "center",
+    color: "#222",
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#444",
+    marginBottom: 4,
+    marginTop: 6,
   },
   input: {
     backgroundColor: "#f2f2f2",
     borderRadius: 10,
     padding: 10,
-    marginBottom: 10,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: "#ddd",
+    color: "#000", // texto negro visible
+  },
+  pickerContainer: {
+    backgroundColor: "#f2f2f2",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    marginBottom: 10,
+  },
+  picker: {
+    width: "100%",
+    color: "#000",
   },
   buttonContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 10,
+    marginTop: 12,
   },
   cancelButton: {
     flex: 1,

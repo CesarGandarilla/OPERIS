@@ -47,7 +47,7 @@ export default function LoginScreen({ navigation }) {
             end={{ x: 1, y: 1 }}
             style={styles.headerBackground}
           >
-            <Text style={styles.title}>¡Hola de nuevo!</Text>
+            <Text style={styles.title}>¡Holaaaaaaa de nuevo!</Text>
             <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
 
             <Svg height="120" width="100%" viewBox="0 0 1440 320" style={styles.wave}>

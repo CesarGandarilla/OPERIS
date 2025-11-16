@@ -119,7 +119,7 @@ export default function MovimientosScreen() {
       <View style={styles.container}>
 
         {/* 🔹 Encabezado simple, como Inventario */}
-        <Text style={styles.title}>Movimientos</Text>
+        <Text style={styles.title}>Movimientos.</Text>
 
         {/* Barra de búsqueda */}
         <TextInput

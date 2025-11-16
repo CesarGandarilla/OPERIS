@@ -1,114 +1,150 @@
 // src/pantallas/MovimientosScreen.js
-import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput } from 'react-native';
+import React, { useEffect, useState } from "react";
+import { View, Text, FlatList, TouchableOpacity, StyleSheet } from "react-native";
 
-export default function InventarioApp() {
-  const [movimientos, setMovimientos] = useState([
-    { id: '1', tipo: 'entrada', descripcion: 'Guantes quirúrgicos', cantidad: 50, fecha: '2025-11-05' },
-    { id: '2', tipo: 'salida', descripcion: 'Mascarillas N95', cantidad: 30, fecha: '2025-11-06' },
-    { id: '3', tipo: 'entrada', descripcion: 'Batas estériles', cantidad: 20, fecha: '2025-11-06' },
-  ]);
+import { listenSolicitudes } from "../firebase/firebaseApi";
+import { useAuth } from "../auth/AuthContext";
 
-  const [filtro, setFiltro] = useState('todos');
-  const [descripcion, setDescripcion] = useState('');
-  const [cantidad, setCantidad] = useState('');
+export default function MovimientosScreen() {
+  const { user } = useAuth();
 
-  const agregarMovimiento = (tipo) => {
-    if (!descripcion || !cantidad) return;
-    const nuevo = {
-      id: (movimientos.length + 1).toString(),
-      tipo,
-      descripcion,
-      cantidad: parseInt(cantidad),
-      fecha: new Date().toISOString().split('T')[0],
-    };
-    setMovimientos([nuevo, ...movimientos]);
-    setDescripcion('');
-    setCantidad('');
+  const usuario = user?.profile?.email;
+  const rol = user?.profile?.role?.toLowerCase();
+
+  const [solicitudes, setSolicitudes] = useState([]);
+  const [filtro, setFiltro] = useState("Todos");
+
+  useEffect(() => {
+    const unsubscribe = listenSolicitudes((data) => {
+      setSolicitudes(data);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // FILTRADO POR USUARIO
+  const movimientosUser =
+    rol === "ceye"
+      ? solicitudes
+      : solicitudes.filter((s) => s.usuario === usuario);
+
+  // FILTRADO POR ESTADO
+  const movimientosFiltrados =
+    filtro === "Todos"
+      ? movimientosUser
+      : movimientosUser.filter((s) => s.estado === filtro);
+
+  // COLORES POR ESTADO
+  const getColor = (estado) => {
+    switch (estado) {
+      case "Pendiente":
+        return "#757575";
+      case "Aceptada":
+        return "#1976D2";
+      case "Rechazada":
+        return "#E53935";
+      case "Lista":
+        return "#00897B";
+      case "Verificada":
+        return "#4CAF50";
+      case "Problema":
+        return "#FB8C00";
+      default:
+        return "#000";
+    }
   };
 
-  const filtrarMovimientos = () => {
-    if (filtro === 'todos') return movimientos;
-    return movimientos.filter((m) => m.tipo === filtro);
-  };
+  const renderItem = ({ item }) => (
+    <View style={[styles.card, { borderLeftColor: getColor(item.estado) }]}>
+      <Text style={styles.titulo}>Solicitud de {item.usuario}</Text>
+
+      {item.items?.map((i, idx) => (
+        <Text key={idx} style={styles.item}>
+          - {i.nombre} x {i.cantidad}
+        </Text>
+      ))}
+
+      <Text style={[styles.estado, { color: getColor(item.estado) }]}>
+        Estado: {item.estado}
+      </Text>
+
+      <Text style={styles.fecha}>
+        Fecha: {new Date(item.creadoEn).toLocaleDateString()}
+      </Text>
+    </View>
+  );
+
+  const estados = [
+    "Todos",
+    "Pendiente",
+    "Aceptada",
+    "Rechazada",
+    "Lista",
+    "Verificada",
+    "Problema",
+  ];
 
   return (
-    <View style={{ flex: 1, padding: 20, backgroundColor: '#F7F9FB' }}>
-      <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 20 }}>📦 Inventario</Text>
-
-      {/* Formulario */}
-      <View style={{ marginBottom: 20 }}>
-        <TextInput
-          placeholder="Descripción del insumo"
-          value={descripcion}
-          onChangeText={setDescripcion}
-          style={{ backgroundColor: '#fff', padding: 10, borderRadius: 8, marginBottom: 10 }}
-        />
-        <TextInput
-          placeholder="Cantidad"
-          value={cantidad}
-          onChangeText={setCantidad}
-          keyboardType="numeric"
-          style={{ backgroundColor: '#fff', padding: 10, borderRadius: 8, marginBottom: 10 }}
-        />
-
-        <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
-          <TouchableOpacity
-            style={{ backgroundColor: '#4CAF50', padding: 10, borderRadius: 8 }}
-            onPress={() => agregarMovimiento('entrada')}
-          >
-            <Text style={{ color: '#fff' }}>➕ Entrada</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{ backgroundColor: '#E53935', padding: 10, borderRadius: 8 }}
-            onPress={() => agregarMovimiento('salida')}
-          >
-            <Text style={{ color: '#fff' }}>➖ Salida</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
+    <View style={styles.container}>
       {/* Filtros */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 20 }}>
-        {['todos', 'entrada', 'salida'].map((tipo) => (
+      <View style={styles.filtrosContainer}>
+        {estados.map((e) => (
           <TouchableOpacity
-            key={tipo}
-            onPress={() => setFiltro(tipo)}
-            style={{
-              backgroundColor: filtro === tipo ? '#1976D2' : '#B0BEC5',
-              padding: 8,
-              borderRadius: 8,
-            }}
+            key={e}
+            style={[
+              styles.filtroBtn,
+              filtro === e && styles.filtroBtnActivo,
+            ]}
+            onPress={() => setFiltro(e)}
           >
-            <Text style={{ color: '#fff', textTransform: 'capitalize' }}>{tipo}</Text>
+            <Text style={styles.filtroText}>{e}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Lista de movimientos */}
+      {/* Lista */}
       <FlatList
-        data={filtrarMovimientos()}
+        data={movimientosFiltrados}
+        renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View
-            style={{
-              backgroundColor: '#fff',
-              marginBottom: 10,
-              padding: 10,
-              borderRadius: 8,
-              borderLeftWidth: 6,
-              borderLeftColor: item.tipo === 'entrada' ? '#4CAF50' : '#E53935',
-            }}
-          >
-            <Text style={{ fontWeight: 'bold' }}>{item.descripcion}</Text>
-            <Text>Cantidad: {item.cantidad}</Text>
-            <Text>Fecha: {item.fecha}</Text>
-            <Text style={{ color: item.tipo === 'entrada' ? '#4CAF50' : '#E53935' }}>
-              {item.tipo.toUpperCase()}
-            </Text>
-          </View>
-        )}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 12, backgroundColor: "#f2f2f2" },
+
+  card: {
+    backgroundColor: "#fff",
+    padding: 12,
+    borderRadius: 10,
+    marginVertical: 8,
+    elevation: 2,
+    borderLeftWidth: 6,
+  },
+  titulo: { fontWeight: "bold", fontSize: 16 },
+  item: { marginLeft: 10 },
+  estado: { marginTop: 6, fontWeight: "bold" },
+  fecha: { marginTop: 4, color: "#555" },
+
+  filtrosContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 10,
+    gap: 8,
+  },
+
+  filtroBtn: {
+    backgroundColor: "#b0bec5",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  filtroBtnActivo: {
+    backgroundColor: "#0277bd",
+  },
+  filtroText: {
+    color: "white",
+    fontWeight: "bold",
+  },
+});

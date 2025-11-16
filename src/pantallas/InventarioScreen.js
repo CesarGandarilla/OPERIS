@@ -12,7 +12,7 @@ import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
 import HeaderInventario from "../componentes/HeaderInventario";
 import FiltrosInventario from "../componentes/FiltrosInventario";
-import FiltrosEstado from "../componentes/FiltrosEstado";   // 👈 nuevo
+import FiltrosEstado from "../componentes/FiltrosEstado";
 import InsumoCard from "../componentes/InsumoCard";
 import AgregarInsumoModal from "../componentes/AgregarInsumoModal";
 import EditarInsumoModal from "../componentes/EditarInsumoModal";
@@ -32,8 +32,8 @@ const getEstadoStock = (item) => {
   return "DISPONIBLE";
 };
 
-export default function InventarioScreen() {
-  const [filtro, setFiltro] = useState("Todos");            // categoría
+export default function InventarioScreen({ route }) {
+  const [filtro, setFiltro] = useState("Todos");             // categoría
   const [estadoFiltro, setEstadoFiltro] = useState("Todos"); // estado de stock
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -42,6 +42,16 @@ export default function InventarioScreen() {
   const [mostrarModalAgregar, setMostrarModalAgregar] = useState(false);
   const [modalEditarVisible, setModalEditarVisible] = useState(false);
   const [insumoSeleccionado, setInsumoSeleccionado] = useState(null);
+
+  // 🟢 Leer estadoInicial cuando venimos desde el Panel (Stock Crítico / Stock Bajo)
+  useEffect(() => {
+    const estadoInicial = route?.params?.estadoInicial;
+    if (estadoInicial) {
+      setEstadoFiltro(estadoInicial); // "Crítico" o "Bajo"
+      setFiltro("Todos");             // categoría en Todos
+      setSearch("");                  // limpiar búsqueda
+    }
+  }, [route?.params?.estadoInicial]);
 
   // Tiempo real de Firebase
   useEffect(() => {

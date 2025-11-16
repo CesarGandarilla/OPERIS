@@ -1,20 +1,49 @@
 // src/componentes/StatCard.js
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+} from "react-native";
 import { tema } from "../tema";
 
-const StatCard = ({ icon, titulo, valor, subtitulo, iconBackgroundColor }) => {
+const StatCard = ({
+  icon,
+  titulo,
+  valor,
+  subtitulo,
+  iconBackgroundColor,
+  onPress,          // 👈 añadimos esto
+}) => {
+
+  // Si hay onPress, usamos TouchableOpacity. Si no, View normal.
+  const Container = onPress ? TouchableOpacity : View;
+
   return (
-    <View style={[styles.card, tema.sombraLg]}>
-      <View style={[styles.iconWrap, iconBackgroundColor && { backgroundColor: iconBackgroundColor }]}>
+    <Container
+      style={[styles.card, tema.sombraLg]}
+      activeOpacity={0.8}
+      onPress={onPress}
+    >
+      <View
+        style={[
+          styles.iconWrap,
+          iconBackgroundColor && { backgroundColor: iconBackgroundColor },
+        ]}
+      >
         {icon}
       </View>
+
       <View>
         <Text style={styles.titulo}>{titulo}</Text>
         <Text style={styles.valor}>{valor}</Text>
-        {subtitulo ? <Text style={styles.subtitulo}>{subtitulo}</Text> : null}
+
+        {subtitulo ? (
+          <Text style={styles.subtitulo}>{subtitulo}</Text>
+        ) : null}
       </View>
-    </View>
+    </Container>
   );
 };
 
@@ -32,16 +61,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 13,
   },
+
   iconWrap: {
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: "#F1F5F9", // valor por defecto
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
   },
-  titulo: { color: tema.colores.sub, fontSize: 14 },
-  valor: { color: tema.colores.ink, fontSize: 22, fontWeight: "700" },
-  subtitulo: { color: tema.colores.sub, fontSize: 12 },
+
+  titulo: {
+    color: tema.colores.sub,
+    fontSize: 14,
+  },
+
+  valor: {
+    color: tema.colores.ink,
+    fontSize: 22,
+    fontWeight: "700",
+  },
+
+  subtitulo: {
+    color: tema.colores.sub,
+    fontSize: 12,
+  },
 });

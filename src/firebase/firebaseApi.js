@@ -40,3 +40,56 @@ export const fetchProfile = async (uid, idToken) => {
   if (!res.ok) throw new Error("No se pudo leer el perfil");
   return await res.json();
 };
+
+//solicitudes por 3ra vez alaverga (ya no me acuerdo cómo lo hice)
+import {
+  getDatabase,
+  ref,
+  push,
+  update,
+  onValue,
+  query,
+  orderByChild,
+} from "firebase/database";
+
+// soli
+export const createSolicitud = async (solicitud) => {
+  try {
+    const db = getDatabase();
+    const solicitudesRef = ref(db, "solicitudes");
+
+    await push(solicitudesRef, solicitud); 
+    return { ok: true };
+  } catch (err) {
+    console.error("Error creando solicitud:", err);
+    return { ok: false };
+  }
+};
+
+// Actualizar estado
+export const updateSolicitud = async (id, data) => {
+  try {
+    const db = getDatabase();
+    const solicitudRef = ref(db, `solicitudes/${id}`);
+
+    await update(solicitudRef, data);
+    return { ok: true };
+  } catch (err) {
+    console.error('Error actualizando solicitud:', err);
+    return { ok: false };
+  }
+};
+
+// wachar al toque la solicitud
+export function listenSolicitudes(callback) {
+  const db = getDatabase();
+  const solicitudesRef = query(ref(db, 'solicitudes'), orderByChild('usuario'));
+
+  const unsubscribe = onValue(solicitudesRef, (snap) => {
+    const data = snap.val() || {};
+    const lista = Object.keys(data).map((id) => ({ id, ...data[id] }));
+    callback(lista);
+  });
+
+  return unsubscribe;
+}

@@ -26,8 +26,13 @@ export default function LoginScreen({ navigation }) {
       return;
     }
     try {
-      await login({ email, password });
-      navigation.replace("PanelDeControlScreen"); // Navega al panel de control después de login
+      const datos = await login({ email, password });
+
+      navigation.replace("PanelDeControlScreen", {
+      usuario: datos.user,      
+      rol: datos.role,          
+      });
+       
     } catch (e) {
       Alert.alert("Error", e.message);
     }

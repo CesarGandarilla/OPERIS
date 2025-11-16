@@ -5,7 +5,7 @@ const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null); 
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const register = async ({ name, email, password, department, role }) => {
@@ -13,7 +13,11 @@ export function AuthProvider({ children }) {
     try {
       const { uid, token } = await registerUser(name, email, password, department, role);
       const profile = await fetchProfile(uid, token);
-      setUser({ uid, email, token, profile });
+
+      const userObj = { uid, email, token, profile };
+      setUser(userObj);
+
+      return { user: userObj, role: profile.role };  
     } finally {
       setLoading(false);
     }
@@ -24,7 +28,11 @@ export function AuthProvider({ children }) {
     try {
       const { uid, token } = await loginUser(email, password);
       const profile = await fetchProfile(uid, token);
-      setUser({ uid, email, token, profile });
+
+      const userObj = { uid, email, token, profile };
+      setUser(userObj);
+
+      return { user: userObj, role: profile.role }; 
     } finally {
       setLoading(false);
     }

@@ -8,9 +8,11 @@ import QuickAction from "../componentes/QuickAction";
 import { AntDesign } from "@expo/vector-icons";
 import { Feather } from '@expo/vector-icons';
 import {Ionicons} from '@expo/vector-icons';
+import { useAuth } from "../auth/AuthContext";
 
 
 const PanelDeControlScreen = () => {
+  const { user } = useAuth();
   return (
     <SafeAreaView style={styles.screen}>
       <HeaderTop saludo="Hola, CEyE" titulo="Panel de Control" />

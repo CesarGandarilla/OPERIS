@@ -12,12 +12,29 @@ import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
 import HeaderInventario from "../componentes/HeaderInventario";
 import FiltrosInventario from "../componentes/FiltrosInventario";
+import FiltrosEstado from "../componentes/FiltrosEstado";   // 👈 nuevo
 import InsumoCard from "../componentes/InsumoCard";
 import AgregarInsumoModal from "../componentes/AgregarInsumoModal";
 import EditarInsumoModal from "../componentes/EditarInsumoModal";
 
+// 🔹 función auxiliar para clasificar el estado de stock
+const getEstadoStock = (item) => {
+  const stock = item.stock ?? 0;
+  const stockCritico = item.stockCritico ?? 0;
+
+  if (stock === 0) return "AGOTADO";
+  if (stockCritico <= 0) return "DESCONOCIDO";
+
+  const stockBajo = stockCritico * 2;
+
+  if (stock > 0 && stock <= stockCritico) return "CRITICO";
+  if (stock > stockCritico && stock <= stockBajo) return "BAJO";
+  return "DISPONIBLE";
+};
+
 export default function InventarioScreen() {
-  const [filtro, setFiltro] = useState("Todos");
+  const [filtro, setFiltro] = useState("Todos");            // categoría
+  const [estadoFiltro, setEstadoFiltro] = useState("Todos"); // estado de stock
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [insumos, setInsumos] = useState([]);
@@ -28,21 +45,52 @@ export default function InventarioScreen() {
 
   // Tiempo real de Firebase
   useEffect(() => {
+    setLoading(true);
     const q = query(collection(db, "insumos"), orderBy("fechaIngreso", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setInsumos(data);
-    });
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setInsumos(data);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error al cargar insumos:", error);
+        setLoading(false);
+      }
+    );
+
     return unsubscribe;
   }, []);
 
   // Filtrado y búsqueda
+  const searchLower = search.toLowerCase();
+
   const insumosFiltrados = insumos.filter((item) => {
-    const coincideBusqueda = item.nombre
-      .toLowerCase()
-      .includes(search.toLowerCase());
-    const coincideFiltro = filtro === "Todos" || item.categoria === filtro;
-    return coincideBusqueda && coincideFiltro;
+    const nombre = (item.nombre || "").toLowerCase();
+    const categoria = item.categoria || "";
+    const estado = getEstadoStock(item);
+
+    const coincideBusqueda = nombre.includes(searchLower);
+
+    // filtro por categoría
+    const coincideCategoria =
+      filtro === "Todos" || categoria === filtro;
+
+    // filtro por estado de stock (usa lo que viene de FiltrosEstado)
+    const coincideEstado =
+      estadoFiltro === "Todos" ||
+      (estadoFiltro === "Agotado" && estado === "AGOTADO") ||
+      (estadoFiltro === "Crítico" && estado === "CRITICO") ||
+      (estadoFiltro === "Bajo" && estado === "BAJO") ||
+      (estadoFiltro === "Crítico+Bajo" &&
+        (estado === "CRITICO" || estado === "BAJO"));
+
+    return coincideBusqueda && coincideCategoria && coincideEstado;
   });
 
   // Abrir modal de edición
@@ -65,13 +113,16 @@ export default function InventarioScreen() {
           onChangeText={setSearch}
         />
 
-        {/* Menú de filtros */}
-        <View style={{ marginBottom: 10 }}>
+        {/* Filtro por categoría */}
+        <View style={{ marginBottom: 6 }}>
           <FiltrosInventario filtro={filtro} setFiltro={setFiltro} />
         </View>
 
+        {/* Filtro por estado de stock */}
+        <FiltrosEstado estado={estadoFiltro} setEstado={setEstadoFiltro} />
+
         {loading ? (
-          <Text style={{ textAlign: "center", marginTop: 20 }}>Cargando...</Text>
+          <Text style={styles.loadingText}>Cargando...</Text>
         ) : (
           <FlatList
             data={insumosFiltrados}
@@ -79,7 +130,14 @@ export default function InventarioScreen() {
             renderItem={({ item }) => (
               <InsumoCard item={item} onEdit={handleEdit} />
             )}
-            contentContainerStyle={{ paddingBottom: 20 }}
+            contentContainerStyle={{ paddingBottom: 20, flexGrow: 1 }}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>
+                  No se encontraron insumos.
+                </Text>
+              </View>
+            }
           />
         )}
 
@@ -110,5 +168,19 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: "#ddd",
+  },
+  loadingText: {
+    textAlign: "center",
+    marginTop: 20,
+    color: "#666",
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: "center",
+    marginTop: 40,
+  },
+  emptyText: {
+    color: "#888",
+    fontSize: 14,
   },
 });

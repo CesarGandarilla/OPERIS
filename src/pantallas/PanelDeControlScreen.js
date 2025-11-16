@@ -13,10 +13,11 @@ import { useAuth } from "../auth/AuthContext";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
 
-const PanelDeControlScreen = () => {
+const PanelDeControlScreen = ({ navigation }) => {
   const { user } = useAuth();
 
   const [insumosCriticos, setInsumosCriticos] = useState(0);
+  const [insumosBajos, setInsumosBajos] = useState(0);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "insumos"), (snapshot) => {
@@ -25,24 +26,29 @@ const PanelDeControlScreen = () => {
         ...doc.data(),
       }));
 
-      let count = 0;
+      let countCriticos = 0;
+      let countBajos = 0;
 
       data.forEach((item) => {
         const stock = item.stock ?? 0;
         const stockCritico = item.stockCritico ?? 0;
+
+        if (stockCritico <= 0) return; // si no definieron crítico, lo saltamos
+
         const stockBajo = stockCritico * 2;
 
-        // Mismos rangos que en InsumoCard:
-        // 0 = Agotado
-        // 1-critico = Crítico
-        // critico+1 - stockBajo = Bajo
-
-        if (stock === 0 || stock <= stockCritico || (stock > stockCritico && stock <= stockBajo)) {
-          count += 1;
+        // 0 < stock <= stockCritico → Crítico
+        if (stock > 0 && stock <= stockCritico) {
+          countCriticos += 1;
+        }
+        // stockCritico < stock <= stockBajo → Bajo
+        else if (stock > stockCritico && stock <= stockBajo) {
+          countBajos += 1;
         }
       });
 
-      setInsumosCriticos(count);
+      setInsumosCriticos(countCriticos);
+      setInsumosBajos(countBajos);
     });
 
     return unsub;
@@ -54,13 +60,32 @@ const PanelDeControlScreen = () => {
 
       <View style={styles.gridWrapper}>
         <View style={styles.grid}>
-          {/* ---- STOCK BAJO / CRÍTICO ----- */}
+          {/* ---- STOCK CRÍTICO ----- */}
           <StatCard
-            icon={<Feather name="alert-circle" size={24} color="#F59E0B" />}
-            iconBackgroundColor="#FFFBEB"
+            icon={<Feather name="alert-octagon" size={24} color="#EF4444" />}
+            iconBackgroundColor="#FEF2F2"
             titulo="Stock Crítico"
             valor={insumosCriticos.toString()}
             subtitulo="items críticos"
+            onPress={() =>
+              navigation.navigate("Inventario", {
+                estadoInicial: "Crítico",
+              })
+            }
+          />
+
+          {/* ---- STOCK BAJO ----- */}
+          <StatCard
+            icon={<Feather name="alert-triangle" size={24} color="#F59E0B" />}
+            iconBackgroundColor="#FFFBEB"
+            titulo="Stock Bajo"
+            valor={insumosBajos.toString()}
+            subtitulo="items en riesgo"
+            onPress={() =>
+              navigation.navigate("Inventario", {
+                estadoInicial: "Bajo",
+              })
+            }
           />
 
           <StatCard
@@ -78,19 +103,17 @@ const PanelDeControlScreen = () => {
             valor={"x"}
             subtitulo="registrados"
           />
-
-          <StatCard
-            icon={<AntDesign name="bar-chart" size={20} color="#A78BFA" />}
-            iconBackgroundColor="#F4EAFE"
-            titulo="Consumo Mensual"
-            valor="x"
-            subtitulo="unidades"
-          />
         </View>
 
         <Text style={styles.sectionTitle}>Accesos Rápidos</Text>
         <QuickAction
-          icono={<Ionicons name="document-text-outline" size={24} color="grey" />}
+          icono={
+            <Ionicons
+              name="document-text-outline"
+              size={24}
+              color="grey"
+            />
+          }
           titulo="Luego vemos que va aquí"
           onPress={() => {}}
         />

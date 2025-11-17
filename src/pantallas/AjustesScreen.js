@@ -1,12 +1,96 @@
 // src/pantallas/AjustesScreen.js
-import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Image,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../auth/AuthContext";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getDatabase, ref as dbRef, update } from "firebase/database";
 
 export default function AjustesScreen() {
   const { user, logout } = useAuth() || {};
   const p = user?.profile;
+
+  const [uploading, setUploading] = useState(false);
+
+  // ------------------------------  
+  //   Seleccionar imagen
+  // ------------------------------
+  const pickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permiso denegado", "Necesitamos acceso a tu galería para seleccionar una foto.");
+        return null;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaType.Images, // ✅ Corregido
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 1,
+      });
+
+      if (!result.canceled) {
+        return result.assets[0].uri;
+      }
+    } catch (err) {
+      console.log("Error al seleccionar imagen:", err);
+      Alert.alert("Error", "No se pudo abrir la galería.");
+    }
+    return null;
+  };
+
+  // ------------------------------  
+  //   Subir imagen a Firebase
+  // ------------------------------
+  const uploadImageAndSave = async () => {
+    try {
+      if (!user?.uid) {
+        Alert.alert("Error", "No se encontró UID del usuario. Inicia sesión de nuevo.");
+        return;
+      }
+
+      const uri = await pickImage();
+      if (!uri) return;
+
+      setUploading(true);
+
+      const fileUri = Platform.OS === "ios" && !uri.startsWith("file://") ? "file://" + uri : uri;
+
+      // Firebase Storage
+      const storage = getStorage();
+      const storageReference = ref(storage, `profilePictures/${user.uid}.jpg`);
+      const response = await fetch(fileUri);
+      const blob = await response.blob();
+
+      await uploadBytes(storageReference, blob);
+      const downloadURL = await getDownloadURL(storageReference);
+
+      // Guardar URL en Realtime Database
+      const db = getDatabase();
+      await update(dbRef(db, `users/${user.uid}`), {
+        profilePhoto: downloadURL,
+      });
+
+      Alert.alert("¡Listo!", "Foto de perfil actualizada correctamente 🎉");
+    } catch (err) {
+      console.log("Error subiendo foto:", err);
+      Alert.alert("Error", "Hubo un error subiendo la foto.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
@@ -19,6 +103,26 @@ export default function AjustesScreen() {
           style={styles.header}
         >
           <Text style={styles.headerTitle}>Ajustes</Text>
+
+          {/* Contenedor Foto + Botón */}
+          <View style={styles.photoContainer}>
+            {p?.profilePhoto ? (
+              <Image source={{ uri: p.profilePhoto }} style={styles.profileImage} />
+            ) : (
+              <View style={[styles.profileImage, styles.noImage]}>
+                <Text style={{ color: "#fff", fontSize: 16 }}>Sin foto</Text>
+              </View>
+            )}
+
+            {/* BOTÓN REDONDO FLOTANTE */}
+            <TouchableOpacity style={styles.cameraButton} onPress={uploadImageAndSave}>
+              {uploading ? (
+                <ActivityIndicator color="#fff" size={20} />
+              ) : (
+                <Text style={{ color: "#fff", fontSize: 20 }}>📷</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </LinearGradient>
 
         {/* Card con información del usuario */}
@@ -56,22 +160,56 @@ const styles = StyleSheet.create({
     backgroundColor: "#f7f9fc",
   },
   header: {
-    height: 180,
+    height: 280,
     justifyContent: "center",
     alignItems: "center",
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
+    paddingTop: 40,
   },
   headerTitle: {
     color: "white",
     fontSize: 28,
     fontWeight: "bold",
-    marginTop: 40,
+    marginBottom: 5,
   },
+
+  /* FOTO DE PERFIL */
+  photoContainer: {
+    marginTop: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 3,
+    borderColor: "white",
+  },
+  noImage: {
+    backgroundColor: "rgba(255,255,255,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  /* BOTÓN FLOTANTE DE CÁMARA */
+  cameraButton: {
+    position: "absolute",
+    bottom: -5,
+    right: -5,
+    backgroundColor: "#00bfa5",
+    padding: 10,
+    borderRadius: 30,
+    borderWidth: 2,
+    borderColor: "white",
+    elevation: 5,
+  },
+
   profileCard: {
     backgroundColor: "white",
     marginHorizontal: 20,
-    marginTop: -50,
+    marginTop: -30,
     padding: 25,
     borderRadius: 25,
     elevation: 5,

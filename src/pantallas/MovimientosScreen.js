@@ -1,6 +1,13 @@
 // src/pantallas/MovimientosScreen.js
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { listenSolicitudes } from "../firebase/firebaseApi";
 import { useAuth } from "../auth/AuthContext";
@@ -23,9 +30,7 @@ export default function MovimientosScreen() {
 
   // FILTRADO POR USUARIO
   const movimientosUser =
-    rol === "ceye"
-      ? solicitudes
-      : solicitudes.filter((s) => s.usuario === usuario);
+    rol === "ceye" ? solicitudes : solicitudes.filter((s) => s.usuario === usuario);
 
   // FILTRADO POR ESTADO
   const movimientosFiltrados =
@@ -36,40 +41,69 @@ export default function MovimientosScreen() {
   // COLORES POR ESTADO
   const getColor = (estado) => {
     switch (estado) {
-      case "Pendiente":
-        return "#757575";
-      case "Aceptada":
-        return "#1976D2";
-      case "Rechazada":
-        return "#E53935";
-      case "Lista":
-        return "#00897B";
-      case "Verificada":
-        return "#4CAF50";
-      case "Problema":
-        return "#FB8C00";
-      default:
-        return "#000";
+      case "Pendiente": return "#9E9E9E";
+      case "Aceptada": return "#2196F3";
+      case "Rechazada": return "#F44336";
+      case "Lista": return "#00BFA5";
+      case "Verificada": return "#4CAF50";
+      case "Problema": return "#FF9800";
+      default: return "#000";
     }
   };
 
+  const getInitial = (usuario) => {
+    return usuario?.charAt(0).toUpperCase() || "U";
+  };
+
   const renderItem = ({ item }) => (
-    <View style={[styles.card, { borderLeftColor: getColor(item.estado) }]}>
-      <Text style={styles.titulo}>Solicitud de {item.usuario}</Text>
+    <View style={styles.card}>
+      <View style={styles.cardContent}>
+        {/* Avatar con inicial */}
+        <View style={[styles.avatar, { backgroundColor: "#f0f0f0" }]}>
+          <Text style={styles.avatarText}>
+            {getInitial(item.usuario)}
+          </Text>
+        </View>
 
-      {item.items?.map((i, idx) => (
-        <Text key={idx} style={styles.item}>
-          - {i.nombre} x {i.cantidad}
-        </Text>
-      ))}
+        {/* Información principal */}
+        <View style={styles.infoContainer}>
+          <Text style={styles.titulo}>{item.usuario}</Text>
+          <Text style={styles.subtitle}>
+            {item.items?.length || 0} {item.items?.length === 1 ? "artículo" : "artículos"}
+          </Text>
+          
+          {/* Badge de estado */}
+          <View style={[styles.badge, { backgroundColor: getColor(item.estado) }]}>
+            <Text style={styles.badgeText}>{item.estado}</Text>
+          </View>
 
-      <Text style={[styles.estado, { color: getColor(item.estado) }]}>
-        Estado: {item.estado}
-      </Text>
+          {/* Items */}
+          {item.items && item.items.length > 0 && (
+            <View style={styles.itemsContainer}>
+              {item.items.slice(0, 2).map((i, idx) => (
+                <Text key={idx} style={styles.itemText}>
+                  • {i.nombre} × {i.cantidad}
+                </Text>
+              ))}
+              {item.items.length > 2 && (
+                <Text style={styles.moreItems}>
+                  +{item.items.length - 2} más
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
 
-      <Text style={styles.fecha}>
-        Fecha: {new Date(item.creadoEn).toLocaleDateString()}
-      </Text>
+        {/* Lado derecho */}
+        <View style={styles.rightContainer}>
+          <Text style={styles.stockText}>
+            {new Date(item.creadoEn).toLocaleDateString('es-MX', { 
+              day: '2-digit', 
+              month: 'short' 
+            })}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 
@@ -84,67 +118,166 @@ export default function MovimientosScreen() {
   ];
 
   return (
-    <View style={styles.container}>
-      {/* Filtros */}
-      <View style={styles.filtrosContainer}>
-        {estados.map((e) => (
-          <TouchableOpacity
-            key={e}
-            style={[
-              styles.filtroBtn,
-              filtro === e && styles.filtroBtnActivo,
-            ]}
-            onPress={() => setFiltro(e)}
-          >
-            <Text style={styles.filtroText}>{e}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+    <SafeAreaView style={styles.safeContainer}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Movimientos</Text>
+        </View>
 
-      {/* Lista */}
-      <FlatList
-        data={movimientosFiltrados}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-      />
-    </View>
+        {/* Filtros con estilo píldora */}
+        <View style={styles.filtrosContainer}>
+          {estados.map((e) => (
+            <TouchableOpacity
+              key={e}
+              style={[
+                styles.filtroBtn,
+                filtro === e && styles.filtroBtnActivo,
+              ]}
+              onPress={() => setFiltro(e)}
+            >
+              <Text
+                style={[
+                  styles.filtroText,
+                  filtro === e && styles.filtroTextActivo,
+                ]}
+              >
+                {e}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Lista */}
+        <FlatList
+          data={movimientosFiltrados}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingBottom: 20 }}
+        />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 12, backgroundColor: "#f2f2f2" },
-
-  card: {
-    backgroundColor: "#fff",
-    padding: 12,
-    borderRadius: 10,
-    marginVertical: 8,
-    elevation: 2,
-    borderLeftWidth: 6,
+  safeContainer: { 
+    flex: 1, 
+    backgroundColor: "#f8f8f8" 
   },
-  titulo: { fontWeight: "bold", fontSize: 16 },
-  item: { marginLeft: 10 },
-  estado: { marginTop: 6, fontWeight: "bold" },
-  fecha: { marginTop: 4, color: "#555" },
-
+  container: { 
+    flex: 1, 
+    padding: 10 
+  },
+  header: {
+    marginBottom: 15,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#000",
+  },
+  card: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    marginVertical: 6,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  cardContent: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#555",
+  },
+  infoContainer: {
+    flex: 1,
+  },
+  titulo: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#000",
+  },
+  subtitle: {
+    fontSize: 13,
+    color: "#888",
+    marginTop: 2,
+  },
+  badge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 6,
+  },
+  badgeText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "bold",
+  },
+  itemsContainer: {
+    marginTop: 8,
+  },
+  itemText: {
+    fontSize: 13,
+    color: "#555",
+    marginVertical: 1,
+  },
+  moreItems: {
+    fontSize: 12,
+    color: "#00BFA5",
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  rightContainer: {
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
+  stockText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#555",
+  },
   filtrosContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginBottom: 10,
     gap: 8,
+    marginBottom: 12,
   },
-
   filtroBtn: {
-    backgroundColor: "#b0bec5",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#00BFA5",
+    backgroundColor: "white",
   },
   filtroBtnActivo: {
-    backgroundColor: "#0277bd",
+    backgroundColor: "#00BFA5",
+    borderColor: "#00BFA5",
   },
   filtroText: {
+    fontSize: 14,
+    color: "#00BFA5",
+    fontWeight: "500",
+  },
+  filtroTextActivo: {
     color: "white",
-    fontWeight: "bold",
+    fontWeight: "600",
   },
 });

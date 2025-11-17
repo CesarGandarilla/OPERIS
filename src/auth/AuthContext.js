@@ -13,11 +13,8 @@ export function AuthProvider({ children }) {
     try {
       const { uid, token } = await registerUser(name, email, password, department, role);
       const profile = await fetchProfile(uid, token);
-
-      const userObj = { uid, email, token, profile };
-      setUser(userObj);
-
-      return { user: userObj, role: profile.role };  
+      setUser({ uid, email, token, profile });
+      return { user: { uid, email, token, profile }, role: profile.role };
     } finally {
       setLoading(false);
     }
@@ -28,11 +25,8 @@ export function AuthProvider({ children }) {
     try {
       const { uid, token } = await loginUser(email, password);
       const profile = await fetchProfile(uid, token);
-
-      const userObj = { uid, email, token, profile };
-      setUser(userObj);
-
-      return { user: userObj, role: profile.role }; 
+      setUser({ uid, email, token, profile });
+      return { user: { uid, email, token, profile }, role: profile.role };
     } finally {
       setLoading(false);
     }

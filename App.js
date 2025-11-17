@@ -1,23 +1,22 @@
-// App.js
-// App.js
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Provider as PaperProvider } from 'react-native-paper'; // ✅ Importar aquí
-import { tema } from './src/tema';
-import { AntDesign, Feather, Ionicons } from '@expo/vector-icons';
+import React from "react";
+import { View, ActivityIndicator } from "react-native";
+import { NavigationContainer } from "@react-navigation/native";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { Provider as PaperProvider } from "react-native-paper";
+import { tema } from "./src/tema";
+import { AntDesign, Feather, Ionicons } from "@expo/vector-icons";
 
-import PanelDeControlScreen from './src/pantallas/PanelDeControlScreen';
-import InventarioScreen from './src/pantallas/InventarioScreen';
-import SolicitudesScreen from './src/pantallas/SolicitudesScreen';
-import MovimientosScreen from './src/pantallas/MovimientosScreen';
-import ReportesScreen from './src/pantallas/ReportesScreen';
-import AjustesScreen from './src/pantallas/AjustesScreen';
+import PanelDeControlScreen from "./src/pantallas/PanelDeControlScreen";
+import InventarioScreen from "./src/pantallas/InventarioScreen";
+import SolicitudesScreen from "./src/pantallas/SolicitudesScreen";
+import MovimientosScreen from "./src/pantallas/MovimientosScreen";
+import ReportesScreen from "./src/pantallas/ReportesScreen";
+import AjustesScreen from "./src/pantallas/AjustesScreen";
 
-import LoginScreen from './src/pantallas/LoginScreen';
-import RegisterScreen from './src/pantallas/RegisterScreen';
-import { AuthProvider, useAuth } from './src/auth/AuthContext';
+import LoginScreen from "./src/pantallas/LoginScreen";
+import RegisterScreen from "./src/pantallas/RegisterScreen";
+import { AuthProvider, useAuth } from "./src/auth/AuthContext";
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -31,7 +30,7 @@ function Tabs() {
         tabBarInactiveTintColor: tema.colores.sub,
         tabBarStyle: {
           height: 80,
-          backgroundColor: '#fff',
+          backgroundColor: "#fff",
           borderTopColor: tema.colores.border,
           borderTopWidth: 1,
           paddingBottom: 6,
@@ -43,7 +42,10 @@ function Tabs() {
       <Tab.Screen
         name="Panel"
         component={PanelDeControlScreen}
-        options={{ tabBarLabel: 'Panel', tabBarIcon: ({ color }) => <Feather name="activity" size={20} color={color} /> }}
+        options={{
+          tabBarLabel: "Panel",
+          tabBarIcon: ({ color }) => <Feather name="activity" size={20} color={color} />,
+        }}
       />
       <Tab.Screen
         name="Inventario"
@@ -83,22 +85,29 @@ function AuthStack() {
   );
 }
 
+// Componente para usar useAuth dentro del provider
 function RootNavigator() {
-  const auth = useAuth();
-  if (!auth) return null;
+  const { user, loading } = useAuth();
 
-  const { user } = useAuth() || {};
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color={tema.colores.teal} />
+      </View>
+    );
+  }
+
   return user ? <Tabs /> : <AuthStack />;
 }
 
 export default function App() {
   return (
-   <AuthProvider>
-    <PaperProvider>
-      <NavigationContainer>
-        <RootNavigator />
-      </NavigationContainer>
-    </PaperProvider>
-  </AuthProvider>
+    <AuthProvider>
+      <PaperProvider>
+        <NavigationContainer>
+          <RootNavigator />
+        </NavigationContainer>
+      </PaperProvider>
+    </AuthProvider>
   );
 }

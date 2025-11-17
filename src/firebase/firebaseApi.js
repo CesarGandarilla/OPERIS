@@ -1,12 +1,15 @@
 import { FIREBASE_API_KEY, FIREBASE_DB_URL } from '@env';
 const AUTH_URL = "https://identitytoolkit.googleapis.com/v1/accounts";
 
+/* ----------------------- AUTH ----------------------- */
+
 export const registerUser = async (name, email, password, department, role) => {
   const res = await fetch(`${AUTH_URL}:signUp?key=${FIREBASE_API_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, returnSecureToken: true }),
   });
+
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
 
@@ -14,34 +17,58 @@ export const registerUser = async (name, email, password, department, role) => {
   const token = data.idToken;
   const profile = { name, email, department, role, createdAt: Date.now() };
 
-  const saveRes = await fetch(`${FIREBASE_DB_URL}/users/${uid}.json?auth=${token}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(profile),
-  });
+  const saveRes = await fetch(
+    `${FIREBASE_DB_URL}/users/${uid}.json?auth=${token}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    }
+  );
+
   if (!saveRes.ok) throw new Error("Error guardando perfil");
 
   return { uid, token };
 };
 
 export const loginUser = async (email, password) => {
-  const res = await fetch(`${AUTH_URL}:signInWithPassword?key=${FIREBASE_API_KEY}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, returnSecureToken: true }),
-  });
+  const res = await fetch(
+    `${AUTH_URL}:signInWithPassword?key=${FIREBASE_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        returnSecureToken: true,
+      }),
+    }
+  );
+
   const data = await res.json();
+
   if (data.error) throw new Error(data.error.message);
-  return { uid: data.localId, token: data.idToken, email: data.email };
+
+  return {
+    uid: data.localId,
+    token: data.idToken,
+    email: data.email,
+  };
 };
 
 export const fetchProfile = async (uid, idToken) => {
-  const res = await fetch(`${FIREBASE_DB_URL}/users/${uid}.json?auth=${idToken}`);
+  const res = await fetch(
+    `${FIREBASE_DB_URL}/users/${uid}.json?auth=${idToken}`
+  );
+
   if (!res.ok) throw new Error("No se pudo leer el perfil");
+
   return await res.json();
 };
 
-//solicitudes por 3ra vez alaverga (ya no me acuerdo cómo lo hice)
+
+/* ----------------------- SOLICITUDES ----------------------- */
+
 import {
   getDatabase,
   ref,
@@ -52,13 +79,39 @@ import {
   orderByChild,
 } from "firebase/database";
 
-// soli
+/**
+ * Crea una solicitud en la Realtime Database.
+ * Convierte automáticamente fechas Date → timestamp (ms)
+ */
 export const createSolicitud = async (solicitud) => {
   try {
     const db = getDatabase();
     const solicitudesRef = ref(db, "solicitudes");
 
-    await push(solicitudesRef, solicitud); 
+    // Convertir fechaNecesaria → timestamp (ms)
+    const fechaNecesariaMs =
+      solicitud.fechaNecesaria instanceof Date
+        ? solicitud.fechaNecesaria.getTime()
+        : solicitud.fechaNecesaria ?? null;
+
+    // Convertir creadoEn → timestamp (ms)
+    const creadoEnMs =
+      solicitud.creadoEn instanceof Date
+        ? solicitud.creadoEn.getTime()
+        : typeof solicitud.creadoEn === "number"
+        ? solicitud.creadoEn
+        : Date.now();
+
+    const solicitudLista = {
+      ...solicitud,
+      fechaNecesaria: fechaNecesariaMs,
+      creadoEn: creadoEnMs,
+    };
+
+    console.log(" GUARDANDO SOLICITUD EN RTDB:", solicitudLista);
+
+    await push(solicitudesRef, solicitudLista);
+
     return { ok: true };
   } catch (err) {
     console.error("Error creando solicitud:", err);
@@ -66,30 +119,40 @@ export const createSolicitud = async (solicitud) => {
   }
 };
 
-// Actualizar estado
+/**
+ * Actualiza el estado u otros campos de una solicitud por ID.
+ */
 export const updateSolicitud = async (id, data) => {
   try {
     const db = getDatabase();
     const solicitudRef = ref(db, `solicitudes/${id}`);
 
     await update(solicitudRef, data);
+
     return { ok: true };
   } catch (err) {
-    console.error('Error actualizando solicitud:', err);
+    console.error(" Error actualizando solicitud:", err);
     return { ok: false };
   }
 };
 
-// wachar al toque la solicitud
-export function listenSolicitudes(callback) {
+/**
+ * Escucha todas las solicitudes en tiempo real.
+ * Las convierte en un arreglo [{ id, ...data }]
+ */
+export const listenSolicitudes = (callback) => {
   const db = getDatabase();
-  const solicitudesRef = query(ref(db, 'solicitudes'), orderByChild('usuario'));
+  const solicitudesRef = query(ref(db, "solicitudes"), orderByChild("usuario"));
 
   const unsubscribe = onValue(solicitudesRef, (snap) => {
     const data = snap.val() || {};
-    const lista = Object.keys(data).map((id) => ({ id, ...data[id] }));
+    const lista = Object.keys(data).map((id) => ({
+      id,
+      ...data[id],
+    }));
+
     callback(lista);
   });
 
   return unsubscribe;
-}
+};

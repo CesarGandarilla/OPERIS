@@ -12,13 +12,17 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
+import { listenSolicitudes } from "../firebase/firebaseApi";
 
 const PanelDeControlScreen = ({ navigation }) => {
   const { user } = useAuth();
 
   const [insumosCriticos, setInsumosCriticos] = useState(0);
   const [insumosBajos, setInsumosBajos] = useState(0);
+  const [insumosAgotados, setInsumosAgotados] = useState(0);
+  const [solicitudesHoy, setSolicitudesHoy] = useState(0);
 
+  // ---- INSUMOS (stock crítico / bajo / agotado) ----
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "insumos"), (snapshot) => {
       const data = snapshot.docs.map((doc) => ({
@@ -28,10 +32,17 @@ const PanelDeControlScreen = ({ navigation }) => {
 
       let countCriticos = 0;
       let countBajos = 0;
+      let countAgotados = 0;
 
       data.forEach((item) => {
         const stock = item.stock ?? 0;
         const stockCritico = item.stockCritico ?? 0;
+
+        // Agotado: stock <= 0
+        if (stock <= 0) {
+          countAgotados += 1;
+          return; // ya no lo contamos como bajo/critico
+        }
 
         if (stockCritico <= 0) return; // si no definieron crítico, lo saltamos
 
@@ -49,9 +60,55 @@ const PanelDeControlScreen = ({ navigation }) => {
 
       setInsumosCriticos(countCriticos);
       setInsumosBajos(countBajos);
+      setInsumosAgotados(countAgotados);
     });
 
     return unsub;
+  }, []);
+
+  // ---- SOLICITUDES HOY ----
+  useEffect(() => {
+    const unsubSolicitudes = listenSolicitudes((lista) => {
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      const mañana = new Date(hoy);
+      mañana.setDate(mañana.getDate() + 1);
+
+      const contarHoy = (valorFecha) => {
+        if (!valorFecha) return false;
+
+        let fecha = valorFecha;
+
+        if (typeof valorFecha?.toDate === "function") {
+          fecha = valorFecha.toDate();
+        } else if (typeof valorFecha === "number") {
+          fecha = new Date(valorFecha);
+        } else if (typeof valorFecha === "string") {
+          fecha = new Date(valorFecha);
+        } else if (typeof valorFecha === "object" && valorFecha.seconds) {
+          fecha = new Date(valorFecha.seconds * 1000);
+        } else if (typeof valorFecha === "object" && valorFecha._seconds) {
+          fecha = new Date(valorFecha._seconds * 1000);
+        } else if (!(valorFecha instanceof Date)) {
+          return false;
+        }
+
+        if (isNaN(fecha.getTime())) return false;
+        return fecha >= hoy && fecha < mañana;
+      };
+
+      const count = lista.filter((s) => {
+        // prioridad: fechaNecesaria, si no, creadoEn
+        const base = s.fechaNecesaria ?? s.creadoEn;
+        return contarHoy(base);
+      }).length;
+
+      setSolicitudesHoy(count);
+    });
+
+    return () => {
+      if (typeof unsubSolicitudes === "function") unsubSolicitudes();
+    };
   }, []);
 
   return (
@@ -66,7 +123,7 @@ const PanelDeControlScreen = ({ navigation }) => {
             iconBackgroundColor="#FEF2F2"
             titulo="Stock Crítico"
             valor={insumosCriticos.toString()}
-            subtitulo="items críticos"
+            subtitulo="ítems críticos"
             onPress={() =>
               navigation.navigate("Inventario", {
                 estadoInicial: "Crítico",
@@ -80,7 +137,7 @@ const PanelDeControlScreen = ({ navigation }) => {
             iconBackgroundColor="#FFFBEB"
             titulo="Stock Bajo"
             valor={insumosBajos.toString()}
-            subtitulo="items en riesgo"
+            subtitulo="ítems en riesgo"
             onPress={() =>
               navigation.navigate("Inventario", {
                 estadoInicial: "Bajo",
@@ -88,20 +145,28 @@ const PanelDeControlScreen = ({ navigation }) => {
             }
           />
 
+          {/* ---- STOCK AGOTADO ----- */}
+          <StatCard
+            icon={<Feather name="x-circle" size={24} color="#6B7280" />}
+            iconBackgroundColor="#F3F4F6"
+            titulo="Stock Agotado"
+            valor={insumosAgotados.toString()}
+            subtitulo="sin existencias"
+            onPress={() =>
+              navigation.navigate("Inventario", {
+                estadoInicial: "Agotado",
+              })
+            }
+          />
+
+          {/* ---- SOLICITUDES HOY ----- */}
           <StatCard
             icon={<AntDesign name="shopping-cart" size={24} color="#60A5FA" />}
             iconBackgroundColor="#E7F7F6"
             titulo="Solicitudes Hoy"
-            valor={"x"}
-            subtitulo="recibidas"
-          />
-
-          <StatCard
-            icon={<AntDesign name="history" size={24} color="#60A5FA" />}
-            iconBackgroundColor="#EAF2FF"
-            titulo="Movimientos Hoy"
-            valor={"x"}
-            subtitulo="registrados"
+            valor={solicitudesHoy.toString()}
+            subtitulo="programadas para hoy"
+            onPress={() => navigation.navigate("Solicitudes")}
           />
         </View>
 
@@ -109,13 +174,13 @@ const PanelDeControlScreen = ({ navigation }) => {
         <QuickAction
           icono={
             <Ionicons
-              name="document-text-outline"
+              name="add-circle-outline"
               size={24}
-              color="grey"
+              color={tema.colores.primario || "#00BFA5"}
             />
           }
-          titulo="Luego vemos que va aquí"
-          onPress={() => {}}
+          titulo="Nueva solicitud"
+          onPress={() => navigation.navigate("Solicitudes")}
         />
       </View>
 

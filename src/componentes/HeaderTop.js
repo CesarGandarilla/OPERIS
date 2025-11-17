@@ -5,7 +5,7 @@ import Svg, { Rect, Defs, LinearGradient, Stop, Path, Circle } from "react-nativ
 import { tema } from "../tema";
 
 const HeaderTop = ({
-  saludo = "Hola, CEyE",
+  saludo = "Hola, bienvenid@",
   titulo = "Panel de Control",
   subtitulo = "Resumen de hoy",
   badgeText = "En línea",

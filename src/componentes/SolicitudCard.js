@@ -143,14 +143,14 @@ export default function SolicitudCard({
                 style={styles.btnOk}
                 onPress={() => onVerificarOk(item.id)}
               >
-                <Text style={styles.btnText}>✔️ Todo bien</Text>
+                <Text style={styles.btnText}>✔️ Equipo estéril</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.btnNo}
                 onPress={() => onVerificarNo(item.id)}
               >
-                <Text style={styles.btnText}>✖️ Hay problema</Text>
+                <Text style={styles.btnText}>✖️ Equipo no estéril</Text>
               </TouchableOpacity>
             </View>
           </View>

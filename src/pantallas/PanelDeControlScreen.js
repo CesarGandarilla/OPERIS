@@ -17,6 +17,15 @@ import { listenSolicitudes } from "../firebase/firebaseApi";
 const PanelDeControlScreen = ({ navigation }) => {
   const { user } = useAuth();
 
+  // 👇 sacamos un nombre “bonito” del usuario
+  const nombreUsuario =
+    user?.profile?.displayName ||
+    user?.profile?.name ||
+    user?.profile?.fullName ||
+    (user?.profile?.email
+      ? user.profile.email.split("@")[0]
+      : "bienvenid@");
+
   const [insumosCriticos, setInsumosCriticos] = useState(0);
   const [insumosBajos, setInsumosBajos] = useState(0);
   const [insumosAgotados, setInsumosAgotados] = useState(0);
@@ -113,7 +122,11 @@ const PanelDeControlScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <HeaderTop saludo="Hola, CEyE" titulo="Panel de Control" />
+      {/* 👇 aquí usamos el nombre */}
+      <HeaderTop
+        saludo={`Hola, ${nombreUsuario}`}
+        titulo="Panel de Control"
+      />
 
       <View style={styles.gridWrapper}>
         <View style={styles.grid}>
@@ -179,7 +192,7 @@ const PanelDeControlScreen = ({ navigation }) => {
               color={tema.colores.primario || "#00BFA5"}
             />
           }
-          titulo="Nueva solicitud"
+          titulo="Solicitudes de Insumos"
           onPress={() => navigation.navigate("Solicitudes")}
         />
       </View>

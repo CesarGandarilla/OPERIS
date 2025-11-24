@@ -11,7 +11,6 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import Svg, { Path } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../auth/AuthContext";
 
@@ -26,9 +25,7 @@ export default function LoginScreen({ navigation }) {
       return;
     }
     try {
-      // login actualiza el contexto (user) y RootNavigator decide si muestra Tabs o AuthStack
       await login({ email, password });
-      // ❌ ya no usamos navigation.replace aquí
     } catch (e) {
       Alert.alert("Error", e.message);
     }
@@ -39,32 +36,19 @@ export default function LoginScreen({ navigation }) {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
         <View style={styles.container}>
-          {/* Fondo superior con degradado */}
+          {/* Header igual que registro */}
           <LinearGradient
             colors={["#00c6a7", "#02a4b3"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.headerBackground}
           >
-            <Text style={styles.title}>¡Holaaaaaaa de nuevo!</Text>
-            <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
-
-            <Svg
-              height="120"
-              width="100%"
-              viewBox="0 0 1440 320"
-              style={styles.wave}
-            >
-              <Path
-                fill="#00c6a7"
-                d="M0,288L60,272C120,256,240,224,360,197.3C480,171,600,149,720,154.7C840,160,960,192,1080,197.3C1200,203,1320,181,1380,170.7L1440,160V320H0Z"
-              />
-            </Svg>
+            <Text style={styles.headerTitle}>¡Hola de nuevo!</Text>
+            <Text style={styles.headerSubtitle}>
+              Inicia sesión para continuar
+            </Text>
           </LinearGradient>
 
           {/* Formulario */}
@@ -87,7 +71,7 @@ export default function LoginScreen({ navigation }) {
             />
 
             <TouchableOpacity
-              style={[styles.button, loading && { opacity: 0.7 }]}
+              style={[styles.button, loading && { opacity: 0.6 }]}
               onPress={onLogin}
               disabled={loading}
             >
@@ -96,7 +80,6 @@ export default function LoginScreen({ navigation }) {
               </Text>
             </TouchableOpacity>
 
-            {/* Texto de registro con navegación */}
             <View
               style={{
                 flexDirection: "row",
@@ -105,9 +88,7 @@ export default function LoginScreen({ navigation }) {
               }}
             >
               <Text style={styles.register}>¿No tienes cuenta? </Text>
-              <TouchableOpacity
-                onPress={() => navigation.navigate("Register")}
-              >
+              <TouchableOpacity onPress={() => navigation.navigate("Register")}>
                 <Text style={styles.link}>Regístrate aquí</Text>
               </TouchableOpacity>
             </View>
@@ -120,42 +101,69 @@ export default function LoginScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f7f9fc" },
+
+  /* HEADER IGUAL QUE REGISTRO */
   headerBackground: {
-    height: 260,
+    height: 230,
     justifyContent: "center",
     alignItems: "center",
-    position: "relative",
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    paddingTop: 50,
   },
-  wave: { position: "absolute", bottom: -1 },
-  title: { color: "white", fontSize: 28, fontWeight: "bold", marginTop: 50 },
-  subtitle: { color: "white", fontSize: 16, opacity: 0.9, marginTop: 6 },
+  headerTitle: {
+    color: "white",
+    fontSize: 28,
+    fontWeight: "bold",
+  },
+  headerSubtitle: {
+    color: "white",
+    fontSize: 16,
+    opacity: 0.9,
+    marginTop: 6,
+  },
+
+  /* FORM */
   form: {
     backgroundColor: "white",
     marginHorizontal: 20,
     padding: 25,
     borderRadius: 25,
     marginTop: -30,
-    elevation: 5,
+    elevation: 6,
     shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowRadius: 10,
   },
+
   input: {
     borderWidth: 1,
     borderColor: "#e5e5e5",
     borderRadius: 12,
-    padding: 13,
+    padding: 14,
     marginBottom: 15,
     fontSize: 15,
+    color: "#333",
   },
+
   button: {
     backgroundColor: "#00bfa5",
     borderRadius: 12,
-    paddingVertical: 13,
+    paddingVertical: 14,
     alignItems: "center",
-    marginTop: 5,
   },
-  buttonText: { color: "white", fontWeight: "600", fontSize: 16 },
-  register: { color: "#666" },
-  link: { color: "#00bfa5", fontWeight: "600" },
+  buttonText: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+
+  register: {
+    textAlign: "center",
+    color: "#666",
+  },
+  link: {
+    color: "#00bfa5",
+    fontWeight: "600",
+  },
 });

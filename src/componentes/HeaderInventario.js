@@ -3,11 +3,12 @@ HeaderInventario.js
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { tema } from "../tema";
 
 export default function HeaderInventario({ agregarInsumo }) {
   return (
     <View style={styles.header}>
-      <Text style={styles.headerTitle}>Inventario</Text>
+      <Text style={[styles.title, { color: INK }]}>Inventario</Text>
       <TouchableOpacity style={styles.addButton} onPress={agregarInsumo}>
         <Ionicons name="add" size={22} color="white" />
         <Text style={styles.addButtonText}>Agregar</Text>
@@ -15,6 +16,7 @@ export default function HeaderInventario({ agregarInsumo }) {
     </View>
   );
 }
+const INK = tema?.colores?.ink || "#111827";
 
 const styles = StyleSheet.create({
   header: {
@@ -31,6 +33,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 10,
+  },
+      title: {
+    fontSize: 26,
+    fontWeight: "800",
+    marginBottom: 12,
   },
   addButtonText: { color: "white", fontWeight: "bold", marginLeft: 5 },
 });

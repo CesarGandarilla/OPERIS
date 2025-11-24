@@ -15,8 +15,11 @@ import {
   getDateFromField,
   formatFechaNecesaria,
 } from "../utils/fechaUtils";
+import { tema } from "../tema";
 
 // Colores por estado de la solicitud
+const INK = tema?.colores?.ink || "#111827";
+
 const getColor = (estado) => {
   switch (estado) {
     case "Pendiente":
@@ -156,7 +159,7 @@ export default function MovimientosScreen() {
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
         {/* 🔹 Encabezado simple, como Inventario */}
-        <Text style={styles.title}>Movimientos</Text>
+<Text style={[styles.title, { color: INK }]}>Movimientos</Text>
 
         {/* Barra de búsqueda */}
         <TextInput
@@ -338,5 +341,10 @@ const styles = StyleSheet.create({
   emptyText: {
     color: "#888",
     fontSize: 14,
+  },
+      title: {
+    fontSize: 26,
+    fontWeight: "800",
+    marginBottom: 12,
   },
 });

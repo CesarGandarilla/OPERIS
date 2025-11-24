@@ -9,6 +9,7 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { tema } from "../tema";
 
 import AgregarSolicitudModal from "../componentes/AgregarSolicitudModal";
 import SolicitudCard from "../componentes/SolicitudCard";
@@ -48,6 +49,7 @@ export default function SolicitudesScreen() {
       Alert.alert("Error", "No se pudo crear la solicitud.");
     }
   };
+  const INK = tema?.colores?.ink || "#111827";
 
   // Escuchar solicitudes
   useEffect(() => {
@@ -109,7 +111,7 @@ export default function SolicitudesScreen() {
         {/* Header con botón agregar */}
         <View className="header" style={styles.header}>
           <View>
-            <Text style={styles.headerTitle}>Solicitudes</Text>
+<           Text style={[styles.title, { color: INK }]}>Solicitudes</Text>
             <Text style={styles.headerSubtitle}>
               {solicitudesOrdenadas.length}{" "}
               {solicitudesOrdenadas.length === 1
@@ -183,5 +185,10 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
     fontSize: 14,
+  },
+      title: {
+    fontSize: 26,
+    fontWeight: "800",
+    marginBottom: 12,
   },
 });

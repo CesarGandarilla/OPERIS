@@ -79,8 +79,16 @@ function Tabs() {
 function AuthStack() {
   return (
     <Stack.Navigator>
-      <Stack.Screen name="Login" component={LoginScreen} options={{ title: "Iniciar sesión" }} />
-      <Stack.Screen name="Register" component={RegisterScreen} options={{ title: "Crear cuenta" }} />
+      <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{ headerShown: false }}
+          />
+      <Stack.Screen
+          name="Register"
+          component={RegisterScreen}
+          options={{ headerShown: false }}
+        />
     </Stack.Navigator>
   );
 }

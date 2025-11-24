@@ -5,25 +5,7 @@ import {
   formatearFechaCreacion,
   formatFechaNecesaria,
 } from "../utils/fechaUtils";
-
-const getColor = (estado) => {
-  switch (estado) {
-    case "Pendiente":
-      return "#9E9E9E";
-    case "Aceptada":
-      return "#2196F3";
-    case "Rechazada":
-      return "#F44336";
-    case "Lista":
-      return "#00BFA5";
-    case "Verificada":
-      return "#4CAF50";
-    case "Problema":
-      return "#FF9800";
-    default:
-      return "#000";
-  }
-};
+import EstadoBadge from "./EstadoBadge"; // ← NUEVO
 
 const getInitial = (usuario) =>
   usuario?.charAt(0).toUpperCase() || "U";
@@ -44,34 +26,29 @@ export default function SolicitudCard({
   return (
     <View style={styles.card}>
       <View style={styles.cardContent}>
-        {/* Avatar con inicial */}
+        {/* Avatar */}
         <View style={[styles.avatar, { backgroundColor: "#f0f0f0" }]}>
           <Text style={styles.avatarText}>{getInitial(item.usuario)}</Text>
         </View>
 
-        {/* Información principal */}
+        {/* Información */}
         <View style={styles.infoContainer}>
-          {/* Destino y cirugía */}
           {item.destino && (
             <Text style={styles.destinoText}>{item.destino}</Text>
           )}
+
           {item.cirugia && (
             <Text style={styles.cirugiaText}>{item.cirugia}</Text>
           )}
 
-          {/* Fecha y hora requerida */}
           {fechaNecesariaTexto && (
             <Text style={styles.fechaNecesariaText}>
               {fechaNecesariaTexto}
             </Text>
           )}
 
-          {/* Badge de estado */}
-          <View
-            style={[styles.badge, { backgroundColor: getColor(item.estado) }]}
-          >
-            <Text style={styles.badgeText}>{item.estado}</Text>
-          </View>
+          {/* ⬅️ NUEVO BADGE ESTILO iOS */}
+          <EstadoBadge estado={item.estado} />
 
           {/* Items */}
           {item.items && item.items.length > 0 && (
@@ -81,6 +58,7 @@ export default function SolicitudCard({
                   • {i.nombre} × {i.cantidad}
                 </Text>
               ))}
+
               {item.items.length > 2 && (
                 <Text style={styles.masText}>
                   + {item.items.length - 2} insumos más
@@ -89,19 +67,18 @@ export default function SolicitudCard({
             </View>
           )}
 
-          {/* Solicitante */}
           <Text style={styles.solicitanteText}>
             Solicitante: {item.usuario}
           </Text>
         </View>
 
-        {/* Fecha de creación derecha */}
+        {/* Fecha creación */}
         <View style={styles.rightContainer}>
           <Text style={styles.fechaText}>{fechaCreacionTexto}</Text>
         </View>
       </View>
 
-      {/* Botones de acción */}
+      {/* Botones CEyE */}
       {rol === "ceye" && (
         <View style={styles.actionsContainer}>
           {item.estado === "Pendiente" && (
@@ -133,7 +110,7 @@ export default function SolicitudCard({
         </View>
       )}
 
-      {/* Solicitante verifica */}
+      {/* Verificación del solicitante */}
       {rol !== "ceye" &&
         item.usuario === usuarioActual &&
         item.estado === "Lista" && (
@@ -205,18 +182,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#666",
     marginTop: 4,
-  },
-  badge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginTop: 6,
-  },
-  badgeText: {
-    color: "white",
-    fontSize: 11,
-    fontWeight: "bold",
   },
   itemsContainer: {
     marginTop: 8,

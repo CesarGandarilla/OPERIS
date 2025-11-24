@@ -1,4 +1,4 @@
-// src/pantallas/AjustesScreen.js
+//AjustesScreen
 import React, { useState } from "react";
 import {
   View,
@@ -23,9 +23,6 @@ export default function AjustesScreen() {
 
   const [uploading, setUploading] = useState(false);
 
-  // ------------------------------  
-  //   Seleccionar imagen
-  // ------------------------------
   const pickImage = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -35,7 +32,7 @@ export default function AjustesScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaType.Images, // ✅ Corregido
+        mediaTypes: ImagePicker.MediaType.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 1,
@@ -51,9 +48,6 @@ export default function AjustesScreen() {
     return null;
   };
 
-  // ------------------------------  
-  //   Subir imagen a Firebase
-  // ------------------------------
   const uploadImageAndSave = async () => {
     try {
       if (!user?.uid) {
@@ -68,7 +62,6 @@ export default function AjustesScreen() {
 
       const fileUri = Platform.OS === "ios" && !uri.startsWith("file://") ? "file://" + uri : uri;
 
-      // Firebase Storage
       const storage = getStorage();
       const storageReference = ref(storage, `profilePictures/${user.uid}.jpg`);
       const response = await fetch(fileUri);
@@ -77,7 +70,6 @@ export default function AjustesScreen() {
       await uploadBytes(storageReference, blob);
       const downloadURL = await getDownloadURL(storageReference);
 
-      // Guardar URL en Realtime Database
       const db = getDatabase();
       await update(dbRef(db, `users/${user.uid}`), {
         profilePhoto: downloadURL,
@@ -95,7 +87,6 @@ export default function AjustesScreen() {
   return (
     <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
       <View style={styles.container}>
-        {/* Header con degradado */}
         <LinearGradient
           colors={["#00c6a7", "#02a4b3"]}
           start={{ x: 0, y: 0 }}
@@ -104,7 +95,6 @@ export default function AjustesScreen() {
         >
           <Text style={styles.headerTitle}>Ajustes</Text>
 
-          {/* Contenedor Foto + Botón */}
           <View style={styles.photoContainer}>
             {p?.profilePhoto ? (
               <Image source={{ uri: p.profilePhoto }} style={styles.profileImage} />
@@ -114,7 +104,6 @@ export default function AjustesScreen() {
               </View>
             )}
 
-            {/* BOTÓN REDONDO FLOTANTE */}
             <TouchableOpacity style={styles.cameraButton} onPress={uploadImageAndSave}>
               {uploading ? (
                 <ActivityIndicator color="#fff" size={20} />
@@ -125,7 +114,6 @@ export default function AjustesScreen() {
           </View>
         </LinearGradient>
 
-        {/* Card con información del usuario */}
         {p ? (
           <View style={styles.profileCard}>
             <Text style={styles.label}>Nombre completo</Text>
@@ -174,7 +162,6 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
 
-  /* FOTO DE PERFIL */
   photoContainer: {
     marginTop: 10,
     alignItems: "center",
@@ -193,7 +180,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  /* BOTÓN FLOTANTE DE CÁMARA */
   cameraButton: {
     position: "absolute",
     bottom: -5,

@@ -122,9 +122,6 @@ export default function AjustesScreen() {
             <Text style={styles.label}>Correo</Text>
             <Text style={styles.value}>{p.email}</Text>
 
-            <Text style={styles.label}>Departamento</Text>
-            <Text style={styles.value}>{p.department}</Text>
-
             <Text style={styles.label}>Rol</Text>
             <Text style={styles.value}>{p.role}</Text>
 

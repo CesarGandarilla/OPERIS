@@ -14,20 +14,56 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../auth/AuthContext";
 
+const isValidEmail = (email) => {
+  const trimmed = email.trim();
+  const regex = /^\S+@\S+\.\S+$/;
+  return regex.test(trimmed);
+};
+
 export default function LoginScreen({ navigation }) {
   const { login, loading } = useAuth() || {};
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const [errors, setErrors] = useState({
+    email: "",
+    password: "",
+  });
+
+  const [showPassword, setShowPassword] = useState(false);
+
   const onLogin = async () => {
-    if (!email || !password) {
-      Alert.alert("Datos faltantes", "Ingresa correo y contraseña.");
+    if (loading) return;
+
+    const trimmedEmail = email.trim().toLowerCase();
+    const newErrors = { email: "", password: "" };
+
+    // Validar correo
+    if (!trimmedEmail) {
+      newErrors.email = "El correo es obligatorio.";
+    } else if (!isValidEmail(trimmedEmail)) {
+      newErrors.email = "Ingresa un correo electrónico válido.";
+    }
+
+    // Validar contraseña
+    if (!password) {
+      newErrors.password = "La contraseña es obligatoria.";
+    }
+
+    if (newErrors.email || newErrors.password) {
+      setErrors(newErrors);
       return;
     }
+
+    setErrors({ email: "", password: "" });
+
     try {
-      await login({ email, password });
+      await login({ email: trimmedEmail, password });
     } catch (e) {
-      Alert.alert("Error", e.message);
+      // Aquí ya llega algo como:
+      // "El correo no se encuentra registrado."
+      // o "La contraseña es incorrecta."
+      Alert.alert("Error", e.message || "No se pudo iniciar sesión.");
     }
   };
 
@@ -52,23 +88,53 @@ export default function LoginScreen({ navigation }) {
           </LinearGradient>
 
           {/* Formulario */}
-          <View style={styles.form}>
+          <View className="form" style={styles.form}>
+            {/* CORREO */}
             <TextInput
               style={styles.input}
               placeholder="Correo electrónico"
               autoCapitalize="none"
               keyboardType="email-address"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (errors.email) {
+                  setErrors((prev) => ({ ...prev, email: "" }));
+                }
+              }}
+              placeholderTextColor="#999"
             />
+            {errors.email ? (
+              <Text style={styles.errorText}>{errors.email}</Text>
+            ) : null}
 
-            <TextInput
-              style={styles.input}
-              placeholder="Contraseña"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-            />
+            {/* CONTRASEÑA */}
+            <View style={styles.passwordWrapper}>
+              <TextInput
+                style={[styles.input, styles.inputWithIcon]}
+                placeholder="Contraseña"
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  if (errors.password) {
+                    setErrors((prev) => ({ ...prev, password: "" }));
+                  }
+                }}
+                placeholderTextColor="#999"
+              />
+              <TouchableOpacity
+                style={styles.showPasswordButton}
+                onPress={() => setShowPassword((prev) => !prev)}
+              >
+                <Text style={styles.showPasswordText}>
+                  {showPassword ? "Ocultar" : "Ver"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {errors.password ? (
+              <Text style={styles.errorText}>{errors.password}</Text>
+            ) : null}
 
             <TouchableOpacity
               style={[styles.button, loading && { opacity: 0.6 }]}
@@ -141,16 +207,46 @@ const styles = StyleSheet.create({
     borderColor: "#e5e5e5",
     borderRadius: 12,
     padding: 14,
-    marginBottom: 15,
+    marginBottom: 8,
     fontSize: 15,
     color: "#333",
   },
 
+  errorText: {
+    color: "#e53935",
+    fontSize: 12,
+    marginBottom: 7,
+  },
+
+  passwordWrapper: {
+    position: "relative",
+    marginBottom: 4,
+  },
+
+  inputWithIcon: {
+    paddingRight: 60, // espacio para el botón "Ver/Ocultar"
+  },
+
+  showPasswordButton: {
+    position: "absolute",
+    right: 15,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
+
+  showPasswordText: {
+    color: "#00c6a7",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
   button: {
-    backgroundColor: "#00bfa5",
+    backgroundColor: "#00c6a7",
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
+    marginTop: 5,
   },
   buttonText: {
     color: "white",
@@ -163,7 +259,7 @@ const styles = StyleSheet.create({
     color: "#666",
   },
   link: {
-    color: "#00bfa5",
+    color: "#00c6a7",
     fontWeight: "600",
   },
 });

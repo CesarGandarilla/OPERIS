@@ -1,5 +1,7 @@
 // InventarioScreen.js
 import React, { useState, useEffect } from "react";
+import FiltroChips from "../componentes/FiltroChips";
+
 import {
   View,
   Text,
@@ -12,10 +14,10 @@ import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
 import HeaderInventario from "../componentes/HeaderInventario";
 import FiltrosInventario from "../componentes/FiltrosInventario";
-import FiltrosEstado from "../componentes/FiltrosEstado";
 import InsumoCard from "../componentes/InsumoCard";
 import AgregarInsumoModal from "../componentes/AgregarInsumoModal";
 import EditarInsumoModal from "../componentes/EditarInsumoModal";
+import { useAuth } from "../auth/AuthContext"; // 👈 añadido
 
 // 🔹 función auxiliar para clasificar el estado de stock
 const getEstadoStock = (item) => {
@@ -33,8 +35,16 @@ const getEstadoStock = (item) => {
 };
 
 export default function InventarioScreen({ route }) {
-  const [filtro, setFiltro] = useState("Todos");             // categoría
-  const [estadoFiltro, setEstadoFiltro] = useState("Todos"); // estado de stock
+  const { user } = useAuth(); // 👈 seguimos usando Auth
+
+  // 👇 detectar CEyE desde user.profile.role
+  const rolCrudo = user?.profile?.role;
+  const rolNormalizado =
+    typeof rolCrudo === "string" ? rolCrudo.trim().toLowerCase() : "";
+  const esCEyE = rolNormalizado === "ceye";
+
+  const [filtro, setFiltro] = useState("Todos");
+  const [estadoFiltro, setEstadoFiltro] = useState("Todos");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [insumos, setInsumos] = useState([]);
@@ -43,17 +53,25 @@ export default function InventarioScreen({ route }) {
   const [modalEditarVisible, setModalEditarVisible] = useState(false);
   const [insumoSeleccionado, setInsumoSeleccionado] = useState(null);
 
-  // 🟢 Leer estadoInicial cuando venimos desde el Panel (Stock Crítico / Stock Bajo)
+  // 🔹 Opciones del filtro estilo iOS
+  const opcionesEstado = [
+    { id: "Todos", label: "Todos" },
+    { id: "Agotado", label: "Agotado" },
+    { id: "Crítico", label: "Crítico" },
+    { id: "Bajo", label: "Bajo" },
+  ];
+
+  // 🟢 Leer estadoInicial si venimos desde el Panel
   useEffect(() => {
     const estadoInicial = route?.params?.estadoInicial;
     if (estadoInicial) {
-      setEstadoFiltro(estadoInicial); // "Crítico" o "Bajo"
-      setFiltro("Todos");             // categoría en Todos
-      setSearch("");                  // limpiar búsqueda
+      setEstadoFiltro(estadoInicial);
+      setFiltro("Todos");
+      setSearch("");
     }
   }, [route?.params?.estadoInicial]);
 
-  // Tiempo real de Firebase
+  // Firebase tiempo real
   useEffect(() => {
     setLoading(true);
     const q = query(collection(db, "insumos"), orderBy("fechaIngreso", "desc"));
@@ -87,18 +105,14 @@ export default function InventarioScreen({ route }) {
 
     const coincideBusqueda = nombre.includes(searchLower);
 
-    // filtro por categoría
     const coincideCategoria =
       filtro === "Todos" || categoria === filtro;
 
-    // filtro por estado de stock (usa lo que viene de FiltrosEstado)
     const coincideEstado =
       estadoFiltro === "Todos" ||
       (estadoFiltro === "Agotado" && estado === "AGOTADO") ||
       (estadoFiltro === "Crítico" && estado === "CRITICO") ||
-      (estadoFiltro === "Bajo" && estado === "BAJO") ||
-      (estadoFiltro === "Crítico+Bajo" &&
-        (estado === "CRITICO" || estado === "BAJO"));
+      (estadoFiltro === "Bajo" && estado === "BAJO");
 
     return coincideBusqueda && coincideCategoria && coincideEstado;
   });
@@ -112,8 +126,13 @@ export default function InventarioScreen({ route }) {
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
+
         {/* Botón agregar */}
-        <HeaderInventario agregarInsumo={() => setMostrarModalAgregar(true)} />
+        <HeaderInventario
+          agregarInsumo={
+            esCEyE ? () => setMostrarModalAgregar(true) : undefined
+          }
+        />
 
         {/* Barra de búsqueda */}
         <TextInput
@@ -124,12 +143,18 @@ export default function InventarioScreen({ route }) {
         />
 
         {/* Filtro por categoría */}
-        <View style={{ marginBottom: 6 }}>
+        <View style={{ marginBottom: 4 }}>
           <FiltrosInventario filtro={filtro} setFiltro={setFiltro} />
         </View>
 
-        {/* Filtro por estado de stock */}
-        <FiltrosEstado estado={estadoFiltro} setEstado={setEstadoFiltro} />
+        {/* 🔥 Filtro por estado con chips estilo iOS */}
+        <View style={{ marginBottom: 6 }}>
+          <FiltroChips
+            opciones={opcionesEstado}
+            valorSeleccionado={estadoFiltro}
+            onChange={setEstadoFiltro}
+          />
+        </View>
 
         {loading ? (
           <Text style={styles.loadingText}>Cargando...</Text>
@@ -138,31 +163,40 @@ export default function InventarioScreen({ route }) {
             data={insumosFiltrados}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <InsumoCard item={item} onEdit={handleEdit} />
+              <InsumoCard
+                item={item}
+                onEdit={esCEyE ? handleEdit : undefined}
+              />
             )}
-            contentContainerStyle={{ paddingBottom: 20, flexGrow: 1 }}
+            contentContainerStyle={{
+              paddingBottom: 30,
+              paddingTop: 1,   // ⭐ espacio superior para que no se pegue
+              flexGrow: 1,
+            }}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>
-                  No se encontraron insumos.
-                </Text>
+                <Text style={styles.emptyText}>No se encontraron insumos.</Text>
               </View>
             }
           />
         )}
 
-        {/* Modal para agregar insumo */}
-        <AgregarInsumoModal
-          visible={mostrarModalAgregar}
-          onClose={() => setMostrarModalAgregar(false)}
-        />
+        {/* Modal agregar */}
+        {esCEyE && (
+          <AgregarInsumoModal
+            visible={mostrarModalAgregar}
+            onClose={() => setMostrarModalAgregar(false)}
+          />
+        )}
 
-        {/* Modal para editar insumo */}
-        <EditarInsumoModal
-          visible={modalEditarVisible}
-          onClose={() => setModalEditarVisible(false)}
-          insumo={insumoSeleccionado}
-        />
+        {/* Modal editar */}
+        {esCEyE && (
+          <EditarInsumoModal
+            visible={modalEditarVisible}
+            onClose={() => setModalEditarVisible(false)}
+            insumo={insumoSeleccionado}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -171,19 +205,22 @@ export default function InventarioScreen({ route }) {
 const styles = StyleSheet.create({
   safeContainer: { flex: 1, backgroundColor: "#f8f8f8" },
   container: { flex: 1, padding: 10 },
+
   searchBar: {
     backgroundColor: "#f2f2f2",
     borderRadius: 10,
-    padding: 10,
-    marginBottom: 10,
+    padding: 8,
+    marginBottom: 10,   // ⭐ más espacio debajo
     borderWidth: 1,
     borderColor: "#ddd",
   },
+
   loadingText: {
     textAlign: "center",
     marginTop: 20,
     color: "#666",
   },
+
   emptyContainer: {
     flex: 1,
     alignItems: "center",

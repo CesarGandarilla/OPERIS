@@ -1,66 +1,62 @@
 // src/pantallas/PanelDeControlScreen.js
 import React, { useState, useEffect } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { StyleSheet, View, Text } from "react-native";
+import { ScrollView, StyleSheet, View, Text } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { tema } from "../tema";
-import HeaderTop from "../componentes/HeaderTop";
+
 import StatCard from "../componentes/StatCard";
 import QuickAction from "../componentes/QuickAction";
+
 import { AntDesign } from "@expo/vector-icons";
 import { Feather } from "@expo/vector-icons";
 import { Ionicons } from "@expo/vector-icons";
+
 import { useAuth } from "../auth/AuthContext";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
 import { listenSolicitudes } from "../firebase/firebaseApi";
 
-const PanelDeControlScreen = ({ navigation }) => {
+export default function PanelDeControlScreen({ navigation }) {
   const { user } = useAuth();
+
+  // Nombre bonito
+  const nombreUsuario =
+    user?.profile?.displayName ||
+    user?.profile?.name ||
+    user?.profile?.fullName ||
+    (user?.profile?.email
+      ? user.profile.email.split("@")[0]
+      : "Usuario");
 
   const [insumosCriticos, setInsumosCriticos] = useState(0);
   const [insumosBajos, setInsumosBajos] = useState(0);
   const [insumosAgotados, setInsumosAgotados] = useState(0);
   const [solicitudesHoy, setSolicitudesHoy] = useState(0);
 
-  // ---- INSUMOS (stock crítico / bajo / agotado) ----
+  // ---- INSUMOS ----
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "insumos"), (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-      let countCriticos = 0;
-      let countBajos = 0;
-      let countAgotados = 0;
+      let crit = 0, bajo = 0, agot = 0;
 
       data.forEach((item) => {
         const stock = item.stock ?? 0;
-        const stockCritico = item.stockCritico ?? 0;
+        const critico = item.stockCritico ?? 0;
+        const bajoLim = critico * 2;
 
-        // Agotado: stock <= 0
         if (stock <= 0) {
-          countAgotados += 1;
-          return; // ya no lo contamos como bajo/critico
-        }
-
-        if (stockCritico <= 0) return; // si no definieron crítico, lo saltamos
-
-        const stockBajo = stockCritico * 2;
-
-        // 0 < stock <= stockCritico → Crítico
-        if (stock > 0 && stock <= stockCritico) {
-          countCriticos += 1;
-        }
-        // stockCritico < stock <= stockBajo → Bajo
-        else if (stock > stockCritico && stock <= stockBajo) {
-          countBajos += 1;
+          agot++;
+        } else if (stock > 0 && stock <= critico) {
+          crit++;
+        } else if (stock > critico && stock <= bajoLim) {
+          bajo++;
         }
       });
 
-      setInsumosCriticos(countCriticos);
-      setInsumosBajos(countBajos);
-      setInsumosAgotados(countAgotados);
+      setInsumosCriticos(crit);
+      setInsumosBajos(bajo);
+      setInsumosAgotados(agot);
     });
 
     return unsub;
@@ -74,50 +70,40 @@ const PanelDeControlScreen = ({ navigation }) => {
       const mañana = new Date(hoy);
       mañana.setDate(mañana.getDate() + 1);
 
-      const contarHoy = (valorFecha) => {
-        if (!valorFecha) return false;
-
-        let fecha = valorFecha;
-
-        if (typeof valorFecha?.toDate === "function") {
-          fecha = valorFecha.toDate();
-        } else if (typeof valorFecha === "number") {
-          fecha = new Date(valorFecha);
-        } else if (typeof valorFecha === "string") {
-          fecha = new Date(valorFecha);
-        } else if (typeof valorFecha === "object" && valorFecha.seconds) {
-          fecha = new Date(valorFecha.seconds * 1000);
-        } else if (typeof valorFecha === "object" && valorFecha._seconds) {
-          fecha = new Date(valorFecha._seconds * 1000);
-        } else if (!(valorFecha instanceof Date)) {
-          return false;
-        }
-
-        if (isNaN(fecha.getTime())) return false;
-        return fecha >= hoy && fecha < mañana;
-      };
-
       const count = lista.filter((s) => {
-        // prioridad: fechaNecesaria, si no, creadoEn
-        const base = s.fechaNecesaria ?? s.creadoEn;
-        return contarHoy(base);
+        const raw = s.fechaNecesaria ?? s.creadoEn;
+        if (!raw) return false;
+
+        let fecha = raw;
+        if (raw?.toDate) fecha = raw.toDate();
+        if (raw?._seconds) fecha = new Date(raw._seconds * 1000);
+
+        return fecha >= hoy && fecha < mañana;
       }).length;
 
       setSolicitudesHoy(count);
     });
 
-    return () => {
-      if (typeof unsubSolicitudes === "function") unsubSolicitudes();
-    };
+    return () => typeof unsubSolicitudes === "function" && unsubSolicitudes();
   }, []);
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <HeaderTop saludo="Hola, CEyE" titulo="Panel de Control" />
+    <ScrollView contentContainerStyle={styles.scroll}>
+      {/* HEADER ESTILO AJUSTES */}
+      <LinearGradient
+        colors={["#00c6a7", "#02a4b3"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
+        <Text style={styles.headerSaludo}>Hola, {nombreUsuario}</Text>
+        <Text style={styles.headerTitulo}>Panel de Control</Text>
+      </LinearGradient>
 
-      <View style={styles.gridWrapper}>
+      {/* CARD BLANCA FLOTANTE */}
+      <View style={styles.card}>
         <View style={styles.grid}>
-          {/* ---- STOCK CRÍTICO ----- */}
+          {/* STOCK CRÍTICO */}
           <StatCard
             icon={<Feather name="alert-octagon" size={24} color="#EF4444" />}
             iconBackgroundColor="#FEF2F2"
@@ -125,13 +111,11 @@ const PanelDeControlScreen = ({ navigation }) => {
             valor={insumosCriticos.toString()}
             subtitulo="ítems críticos"
             onPress={() =>
-              navigation.navigate("Inventario", {
-                estadoInicial: "Crítico",
-              })
+              navigation.navigate("Inventario", { estadoInicial: "Crítico" })
             }
           />
 
-          {/* ---- STOCK BAJO ----- */}
+          {/* STOCK BAJO */}
           <StatCard
             icon={<Feather name="alert-triangle" size={24} color="#F59E0B" />}
             iconBackgroundColor="#FFFBEB"
@@ -139,13 +123,11 @@ const PanelDeControlScreen = ({ navigation }) => {
             valor={insumosBajos.toString()}
             subtitulo="ítems en riesgo"
             onPress={() =>
-              navigation.navigate("Inventario", {
-                estadoInicial: "Bajo",
-              })
+              navigation.navigate("Inventario", { estadoInicial: "Bajo" })
             }
           />
 
-          {/* ---- STOCK AGOTADO ----- */}
+          {/* STOCK AGOTADO */}
           <StatCard
             icon={<Feather name="x-circle" size={24} color="#6B7280" />}
             iconBackgroundColor="#F3F4F6"
@@ -153,13 +135,11 @@ const PanelDeControlScreen = ({ navigation }) => {
             valor={insumosAgotados.toString()}
             subtitulo="sin existencias"
             onPress={() =>
-              navigation.navigate("Inventario", {
-                estadoInicial: "Agotado",
-              })
+              navigation.navigate("Inventario", { estadoInicial: "Agotado" })
             }
           />
 
-          {/* ---- SOLICITUDES HOY ----- */}
+          {/* SOLICITUDES HOY */}
           <StatCard
             icon={<AntDesign name="shopping-cart" size={24} color="#60A5FA" />}
             iconBackgroundColor="#E7F7F6"
@@ -176,42 +156,70 @@ const PanelDeControlScreen = ({ navigation }) => {
             <Ionicons
               name="add-circle-outline"
               size={24}
-              color={tema.colores.primario || "#00BFA5"}
+              color="#00BFA5"
             />
           }
-          titulo="Nueva solicitud"
+          titulo="Solicitudes de Insumos"
           onPress={() => navigation.navigate("Solicitudes")}
         />
       </View>
 
-      <View style={{ height: tema.espacio(12) }} />
-    </SafeAreaView>
+      <View style={{ height: 40 }} />
+    </ScrollView>
   );
-};
-
-export default PanelDeControlScreen;
+}
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: tema.colores.bg,
-    paddingTop: 12,
-    paddingBottom: 12,
+  scroll: {
+    flexGrow: 1,
+    backgroundColor: "#f7f9fc",
   },
-  gridWrapper: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
+
+  /* HEADER DEGRADADO */
+  header: {
+    height: 220,
+    justifyContent: "center",
+    alignItems: "center",
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+    paddingTop: 40,
   },
+  headerSaludo: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "600",
+  },
+  headerTitulo: {
+    color: "white",
+    fontSize: 28,
+    fontWeight: "bold",
+    marginTop: 5,
+  },
+
+  /* CARD BLANCA */
+  card: {
+    backgroundColor: "white",
+    marginHorizontal: 20,
+    marginTop: -40,
+    padding: 20,
+    borderRadius: 25,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+  },
+
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
   },
+
   sectionTitle: {
     marginTop: 20,
     marginBottom: 10,
-    color: tema.colores.ink,
     fontSize: 16,
     fontWeight: "700",
+    color: "#333",
   },
 });

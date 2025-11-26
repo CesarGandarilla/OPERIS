@@ -22,6 +22,10 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 function Tabs() {
+  // 👇 leemos el rol del usuario logueado
+  const { user } = useAuth() || {};
+  const role = user?.profile?.role; // "CEyE" o "Enfermero"
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -44,33 +48,60 @@ function Tabs() {
         component={PanelDeControlScreen}
         options={{
           tabBarLabel: "Panel",
-          tabBarIcon: ({ color }) => <Feather name="activity" size={20} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Feather name="activity" size={20} color={color} />
+          ),
         }}
       />
       <Tab.Screen
         name="Inventario"
         component={InventarioScreen}
-        options={{ tabBarIcon: ({ color }) => <Ionicons name="document-text-outline" size={23} color={color} /> }}
+        options={{
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="document-text-outline" size={23} color={color} />
+          ),
+        }}
       />
       <Tab.Screen
         name="Solicitudes"
         component={SolicitudesScreen}
-        options={{ tabBarIcon: ({ color }) => <AntDesign name="shopping-cart" size={22} color={color} /> }}
+        options={{
+          tabBarIcon: ({ color }) => (
+            <AntDesign name="shopping-cart" size={22} color={color} />
+          ),
+        }}
       />
       <Tab.Screen
         name="Movimientos"
         component={MovimientosScreen}
-        options={{ tabBarIcon: ({ color }) => <AntDesign name="history" size={20} color={color} /> }}
+        options={{
+          tabBarIcon: ({ color }) => (
+            <AntDesign name="history" size={20} color={color} />
+          ),
+        }}
       />
-      <Tab.Screen
-        name="Reportes"
-        component={ReportesScreen}
-        options={{ tabBarIcon: ({ color }) => <AntDesign name="bar-chart" size={22} color={color} /> }}
-      />
+
+      {/* ESTA TAB SOLO EXISTE SI ES CEyE */}
+      {role === "CEyE" && (
+        <Tab.Screen
+          name="Reportes"
+          component={ReportesScreen}
+          options={{
+            tabBarIcon: ({ color }) => (
+              <AntDesign name="bar-chart" size={22} color={color} />
+            ),
+          }}
+        />
+      )}
+
       <Tab.Screen
         name="Ajustes"
         component={AjustesScreen}
-        options={{ tabBarIcon: ({ color }) => <AntDesign name="setting" size={20} color={color} /> }}
+        options={{
+          tabBarIcon: ({ color }) => (
+            <AntDesign name="setting" size={20} color={color} />
+          ),
+        }}
       />
     </Tab.Navigator>
   );
@@ -79,8 +110,16 @@ function Tabs() {
 function AuthStack() {
   return (
     <Stack.Navigator>
-      <Stack.Screen name="Login" component={LoginScreen} options={{ title: "Iniciar sesión" }} />
-      <Stack.Screen name="Register" component={RegisterScreen} options={{ title: "Crear cuenta" }} />
+      <Stack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Register"
+        component={RegisterScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
@@ -91,7 +130,9 @@ function RootNavigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+      >
         <ActivityIndicator size="large" color={tema.colores.teal} />
       </View>
     );

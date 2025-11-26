@@ -1,38 +1,30 @@
 // InsumoCard.jsx
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import EstadoBadge from "./EstadoBadge"; // <-- nuevo badge estilo iOS
 
 export default function InsumoCard({ item, onEdit }) {
   const stock = item.stock ?? 0;
   const stockCritico = item.stockCritico ?? 0;
 
-  // Calcular stock bajo automáticamente
   const stockBajo = stockCritico * 2;
 
   // ----- Lógica de estado -----
   let estadoTexto = "";
-  let estadoColor = "";
 
   if (stock === 0) {
-    // AGOTADO
     estadoTexto = "Agotado";
-    estadoColor = "#9e9e9e"; // gris
   } else if (stockCritico > 0 && stock > 0 && stock <= stockCritico) {
-    // CRÍTICO
     estadoTexto = "Crítico";
-    estadoColor = "#e53935"; // rojo
   } else if (stockCritico > 0 && stock > stockCritico && stock <= stockBajo) {
-    // BAJO
     estadoTexto = "Bajo";
-    estadoColor = "#fbc02d"; // amarillo
   } else {
-    // DISPONIBLE
     estadoTexto = "Disponible";
-    estadoColor = "#4caf50"; // verde
   }
 
   return (
     <View style={styles.card}>
+      
       {/* Icono / inicial */}
       <View style={styles.cardLeft}>
         <View style={styles.iconContainer}>
@@ -47,10 +39,9 @@ export default function InsumoCard({ item, onEdit }) {
         <Text style={styles.nombre}>{item.nombre}</Text>
         <Text style={styles.categoria}>{item.categoria}</Text>
 
-        <View style={styles.estadoContainer}>
-          <View style={[styles.estadoBadge, { backgroundColor: estadoColor }]}>
-            <Text style={styles.estadoTexto}>{estadoTexto}</Text>
-          </View>
+        {/* Nuevo Badge estilizado */}
+        <View style={{ marginTop: 4 }}>
+          <EstadoBadge estado={estadoTexto} />
         </View>
       </View>
 
@@ -59,10 +50,17 @@ export default function InsumoCard({ item, onEdit }) {
         <Text style={styles.stock}>Stock: {stock}</Text>
         <Text style={styles.codigo}>Código: {item.codigo}</Text>
 
-        <TouchableOpacity style={styles.editButton} onPress={() => onEdit(item)}>
-          <Text style={styles.editText}>Editar</Text>
-        </TouchableOpacity>
+        {/* ⭐ SOLO mostrar botón si onEdit existe (solo CEyE) */}
+        {onEdit && (
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => onEdit(item)}
+          >
+            <Text style={styles.editText}>Editar</Text>
+          </TouchableOpacity>
+        )}
       </View>
+
     </View>
   );
 }
@@ -110,20 +108,6 @@ const styles = StyleSheet.create({
     color: "#888",
     marginVertical: 2,
     fontSize: 12,
-  },
-  estadoContainer: {
-    marginTop: 4,
-  },
-  estadoBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-  },
-  estadoTexto: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
   },
   cardRight: {
     justifyContent: "center",

@@ -7,11 +7,15 @@ import {
   FlatList,
   StyleSheet,
   Alert,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { tema } from "../tema";
 
 import AgregarSolicitudModal from "../componentes/AgregarSolicitudModal";
+import AgregarSolicitudRapidaModal from "../componentes/AgregarSolicitudRapidaModal";
 import SolicitudCard from "../componentes/SolicitudCard";
+
 import {
   listenSolicitudes,
   updateSolicitud,
@@ -23,59 +27,81 @@ import { getDateFromField } from "../utils/fechaUtils";
 
 export default function SolicitudesScreen() {
   const { user } = useAuth();
-
   const usuario = user?.profile?.email;
   const rol = user?.profile?.role?.toLowerCase();
 
   const [solicitudes, setSolicitudes] = useState([]);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [modalElaboradaVisible, setModalElaboradaVisible] = useState(false);
+  const [modalRapidaVisible, setModalRapidaVisible] = useState(false);
+  const [selectorVisible, setSelectorVisible] = useState(false);
 
-  // Crear nueva solicitud (recibe items, fechaNecesaria, destino, cirugia)
+  const INK = tema?.colores?.ink || "#111827";
+
+  // Crear solicitud elaborada
   const crearSolicitud = async (solicitudData) => {
     try {
       await createSolicitud({
         usuario,
         rol,
         estado: "Pendiente",
-        creadoEn: Date.now(), // timestamp en ms
+        creadoEn: Date.now(),
+        tipo: "elaborada",
         ...solicitudData,
       });
 
-      Alert.alert("Solicitud creada", "Tu solicitud se envió correctamente.");
-      setModalVisible(false);
+      Alert.alert("Solicitud creada", "Tu solicitud elaborada se envió.");
+      setModalElaboradaVisible(false);
     } catch (error) {
-      console.error("Error creando solicitud", error);
+      console.error("Error creando solicitud elaborada", error);
       Alert.alert("Error", "No se pudo crear la solicitud.");
+    }
+  };
+
+  // Crear solicitud rápida
+  const crearSolicitudRapida = async (solicitud) => {
+    try {
+      await createSolicitud(solicitud);
+
+      Alert.alert("Solicitud rápida enviada");
+      setModalRapidaVisible(false);
+    } catch (error) {
+      console.error("Error creando solicitud rápida", error);
+      Alert.alert("Error", "No se pudo enviar la solicitud rápida.");
     }
   };
 
   // Escuchar solicitudes
   useEffect(() => {
-    const unsubscribe = listenSolicitudes((data) => {
-      setSolicitudes(data);
-    });
-
-    return () => unsubscribe();
+    const unsub = listenSolicitudes((data) => setSolicitudes(data));
+    return () => unsub();
   }, []);
 
-  // SOLO CEYE ve todo, el resto solo las suyas
-  const solicitudesMostradas =
-    rol === "ceye"
-      ? solicitudes
-      : solicitudes.filter((s) => s.usuario === usuario);
+  // CEyE ve todo, los demás solo las suyas
+  // 1. Primero filtrar las NO finalizadas
+  const solicitudesActivas = solicitudes.filter((s) => {
+  // Solicitudes que sí deben seguir apareciendo
+    const activasCEYE = ["Pendiente", "Aceptada"];
+    const activasOtros = ["Pendiente"];
 
-  // Ordenar por urgencia (fechaNecesaria), luego por fecha de creación
+    return rol === "ceye"
+      ? activasCEYE.includes(s.estado)
+      : activasOtros.includes(s.estado) && s.usuario === usuario;
+  });
+
+  // 2. CEYE ve todas las activas; otros solo las suyas (ya está arriba)
+  const solicitudesMostradas = solicitudesActivas;
+
+
+  // Ordenar por urgencia → fecha necesaria → fecha creación
   const solicitudesOrdenadas = [...solicitudesMostradas].sort((a, b) => {
     const da = getDateFromField(a.fechaNecesaria);
     const db = getDateFromField(b.fechaNecesaria);
 
-    if (da && db) return da - db; // la más próxima primero
+    if (da && db) return da - db;
     if (da && !db) return -1;
     if (!da && db) return 1;
 
-    const ca = getDateFromField(a.creadoEn) || 0;
-    const cb = getDateFromField(b.creadoEn) || 0;
-    return cb - ca; // más reciente primero
+    return (b.creadoEn || 0) - (a.creadoEn || 0);
   });
 
   // Acciones CEyE
@@ -83,10 +109,10 @@ export default function SolicitudesScreen() {
   const rechazar = (id) => updateSolicitud(id, { estado: "Rechazada" });
   const marcarLista = (id) =>
     updateSolicitud(id, { estado: "Lista" }).then(() =>
-      Alert.alert("Listo", "Se notificará al solicitante")
+      Alert.alert("Listo", "El solicitante ha sido notificado.")
     );
 
-  // Verificación del solicitante
+  // Acciones de verificación
   const verificarOk = (id) => updateSolicitud(id, { estado: "Verificada" });
   const verificarNo = (id) => updateSolicitud(id, { estado: "Problema" });
 
@@ -106,10 +132,9 @@ export default function SolicitudesScreen() {
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
-        {/* Header con botón agregar */}
-        <View className="header" style={styles.header}>
+        <View style={styles.header}>
           <View>
-            <Text style={styles.headerTitle}>Solicitudes</Text>
+            <Text style={[styles.title, { color: INK }]}>Solicitudes</Text>
             <Text style={styles.headerSubtitle}>
               {solicitudesOrdenadas.length}{" "}
               {solicitudesOrdenadas.length === 1
@@ -118,11 +143,11 @@ export default function SolicitudesScreen() {
             </Text>
           </View>
 
-          {/* Botón crear solicitud */}
+          {/* Botón agregar → solo para roles ≠ CEYE */}
           {rol !== "ceye" && (
             <TouchableOpacity
               style={styles.btnAgregar}
-              onPress={() => setModalVisible(true)}
+              onPress={() => setSelectorVisible(true)}
             >
               <Text style={styles.btnAgregarText}>+ Agregar</Text>
             </TouchableOpacity>
@@ -136,12 +161,58 @@ export default function SolicitudesScreen() {
           contentContainerStyle={{ paddingBottom: 20 }}
         />
 
+        {/* MODAL SELECTOR */}
+        <Modal transparent visible={selectorVisible} animationType="fade">
+          <View style={styles.selectorOverlay}>
+            <View style={styles.selectorBox}>
+              <Text style={styles.selectorTitle}>Tipo de solicitud</Text>
+
+              <TouchableOpacity
+                style={styles.selectorBtn}
+                onPress={() => {
+                  setSelectorVisible(false);
+                  setModalElaboradaVisible(true);
+                }}
+              >
+                <Text style={styles.selectorBtnText}>Solicitud elaborada</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.selectorBtn}
+                onPress={() => {
+                  setSelectorVisible(false);
+                  setModalRapidaVisible(true);
+                }}
+              >
+                <Text style={styles.selectorBtnText}>Solicitud rápida</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setSelectorVisible(false)}
+                style={styles.selectorCancel}
+              >
+                <Text style={styles.selectorCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* MODAL ELABORADA */}
         <AgregarSolicitudModal
-          visible={modalVisible}
-          onClose={() => setModalVisible(false)}
+          visible={modalElaboradaVisible}
+          onClose={() => setModalElaboradaVisible(false)}
           usuario={usuario}
           rol={rol}
           onEnviar={crearSolicitud}
+        />
+
+        {/* MODAL RÁPIDA */}
+        <AgregarSolicitudRapidaModal
+          visible={modalRapidaVisible}
+          onClose={() => setModalRapidaVisible(false)}
+          usuario={usuario}
+          rol={rol}
+          onEnviar={crearSolicitudRapida}
         />
       </View>
     </SafeAreaView>
@@ -153,35 +224,49 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8f8f8",
   },
-  container: {
-    flex: 1,
-    padding: 10,
-  },
+  container: { flex: 1, padding: 10 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 15,
   },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#000",
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: "#888",
-    marginTop: 2,
-  },
+  title: { fontSize: 26, fontWeight: "800", marginBottom: 12 },
+  headerSubtitle: { fontSize: 14, color: "#888" },
   btnAgregar: {
     backgroundColor: "#00BFA5",
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
   },
-  btnAgregarText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 14,
+  btnAgregarText: { color: "#fff", fontWeight: "600" },
+
+  // Selector de tipo de solicitud
+  selectorOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
   },
+  selectorBox: {
+    backgroundColor: "#fff",
+    padding: 20,
+    width: "80%",
+    borderRadius: 16,
+  },
+  selectorTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  selectorBtn: {
+    backgroundColor: "#00BFA5",
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  selectorBtnText: { color: "#fff", textAlign: "center", fontWeight: "600" },
+  selectorCancel: { marginTop: 8, padding: 8 },
+  selectorCancelText: { textAlign: "center", color: "red" },
 });

@@ -6,17 +6,18 @@ import {
   FlatList,
   TextInput,
   StyleSheet,
-  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
 import { listenSolicitudes } from "../firebase/firebaseApi";
-import {
-  getDateFromField,
-  formatFechaNecesaria,
-} from "../utils/fechaUtils";
+import { getDateFromField, formatFechaNecesaria } from "../utils/fechaUtils";
+import FiltroChips from "../componentes/FiltroChips";
+import { tema } from "../tema";
 
-// Colores por estado de la solicitud
+// Colores limpios e iOS
+const INK = tema?.colores?.ink || "#111827";
+
+// Badge color por estado
 const getColor = (estado) => {
   switch (estado) {
     case "Pendiente":
@@ -38,7 +39,6 @@ const getColor = (estado) => {
 
 export default function MovimientosScreen() {
   const { user } = useAuth();
-
   const usuario = user?.profile?.email;
   const rol = user?.profile?.role?.toLowerCase();
 
@@ -46,6 +46,17 @@ export default function MovimientosScreen() {
   const [filtro, setFiltro] = useState("Todos");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // ESTADOS DEL FILTRO
+  const estados = [
+    "Todos",
+    "Pendiente",
+    "Aceptada",
+    "Rechazada",
+    "Lista",
+    "Verificada",
+    "Problema",
+  ];
 
   useEffect(() => {
     setLoading(true);
@@ -56,19 +67,19 @@ export default function MovimientosScreen() {
     return () => unsubscribe();
   }, []);
 
-  // 1) Filtrar por usuario
+  // Filtrar por usuario (si no es CEYE)
   const movimientosUser =
     rol === "ceye"
       ? solicitudes
       : solicitudes.filter((s) => s.usuario === usuario);
 
-  // 2) Filtrar por estado
+  // Filtrar por estado
   const movimientosEstado =
     filtro === "Todos"
       ? movimientosUser
       : movimientosUser.filter((s) => s.estado === filtro);
 
-  // 3) Filtrar por búsqueda (usuario, insumos, destino, cirugía)
+  // Filtrar por texto
   const searchLower = search.toLowerCase();
   const movimientosFiltrados = movimientosEstado.filter((s) => {
     const usuarioStr = (s.usuario || "").toLowerCase();
@@ -86,16 +97,6 @@ export default function MovimientosScreen() {
     );
   });
 
-  const estados = [
-    "Todos",
-    "Pendiente",
-    "Aceptada",
-    "Rechazada",
-    "Lista",
-    "Verificada",
-    "Problema",
-  ];
-
   const renderItem = ({ item }) => {
     const fechaNecesariaTexto = formatFechaNecesaria(item.fechaNecesaria);
     const fechaCreacionDate = getDateFromField(item.creadoEn);
@@ -108,19 +109,44 @@ export default function MovimientosScreen() {
       : "Sin fecha";
 
     return (
-      <View style={[styles.card, { borderLeftColor: getColor(item.estado) }]}>
+      <View
+        style={[
+          styles.card,
+          { borderLeftColor: getColor(item.estado) },
+        ]}
+      >
         <View style={styles.cardHeader}>
-          <Text style={styles.titulo}>
+          <Text style={styles.cardTitle}>
             Solicitud de {item.usuario || "Desconocido"}
           </Text>
-          <Text style={[styles.estado, { color: getColor(item.estado) }]}>
-            {item.estado}
-          </Text>
+
+          {/* Badge de estado estilo iOS */}
+          <View
+            style={[
+              styles.estadoBadge,
+              { backgroundColor: `${getColor(item.estado)}20` },
+            ]}
+          >
+            <View
+              style={[
+                styles.estadoDot,
+                { backgroundColor: getColor(item.estado) },
+              ]}
+            />
+            <Text
+              style={[
+                styles.estadoText,
+                { color: getColor(item.estado) },
+              ]}
+            >
+              {item.estado}
+            </Text>
+          </View>
         </View>
 
-        {/* Destino y cirugía, igual que en Solicitudes */}
+        {/* Destino y cirugía */}
         {(item.destino || item.cirugia) && (
-          <View style={{ marginTop: 2 }}>
+          <View style={{ marginTop: 4 }}>
             {item.destino && (
               <Text style={styles.destinoText}>{item.destino}</Text>
             )}
@@ -130,13 +156,14 @@ export default function MovimientosScreen() {
           </View>
         )}
 
-        {/* Fecha necesaria si existe */}
+        {/* Fecha necesaria */}
         {fechaNecesariaTexto && (
-          <Text style={styles.fechaNecesariaText}>
+          <Text style={styles.fechaNecesaria}>
             Necesario: {fechaNecesariaTexto}
           </Text>
         )}
 
+        {/* Items */}
         <View style={styles.itemsContainer}>
           {item.items?.map((i, idx) => (
             <Text key={idx} style={styles.item}>
@@ -145,7 +172,8 @@ export default function MovimientosScreen() {
           ))}
         </View>
 
-        <Text style={styles.fecha}>
+        {/* Fecha */}
+        <Text style={styles.fechaCreacion}>
           Creado: {fechaCreacionTexto}
         </Text>
       </View>
@@ -155,41 +183,24 @@ export default function MovimientosScreen() {
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
-        {/* 🔹 Encabezado simple, como Inventario */}
+        {/* Título */}
         <Text style={styles.title}>Movimientos</Text>
 
-        {/* Barra de búsqueda */}
+        {/* Búsqueda */}
         <TextInput
-          placeholder="Buscar por usuario, insumo, destino o cirugía..."
+          placeholder="Buscar usuario, insumo, destino o cirugía..."
           style={styles.searchBar}
           value={search}
           onChangeText={setSearch}
         />
 
-        {/* Filtros por estado */}
-        <View style={styles.filtrosContainer}>
-          {estados.map((e) => {
-            const activo = filtro === e;
-            return (
-              <TouchableOpacity
-                key={e}
-                style={[
-                  styles.filtroBtn,
-                  activo && styles.filtroBtnActivo,
-                ]}
-                onPress={() => setFiltro(e)}
-              >
-                <Text
-                  style={[
-                    styles.filtroText,
-                    activo && styles.filtroTextActivo,
-                  ]}
-                >
-                  {e}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        {/* Filtro de estados (iOS) */}
+        <View style={{ marginBottom: 6 }}>
+          <FiltroChips
+            opciones={estados.map((e) => ({ id: e, label: e }))}
+            valorSeleccionado={filtro}
+            onChange={setFiltro}
+          />
         </View>
 
         {loading ? (
@@ -200,10 +211,8 @@ export default function MovimientosScreen() {
             renderItem={renderItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{
-              paddingBottom: 20,
-              flexGrow: movimientosFiltrados.length === 0 ? 1 : 0,
-              justifyContent:
-                movimientosFiltrados.length === 0 ? "center" : "flex-start",
+              paddingBottom: 30,
+              paddingTop: 4,
             }}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
@@ -220,79 +229,69 @@ export default function MovimientosScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeContainer: { flex: 1, backgroundColor: "#f8f8f8" },
-  container: { flex: 1, padding: 10 },
+  safeContainer: { flex: 1, backgroundColor: "#F8F9FB" },
+  container: { flex: 1, padding: 14 },
 
   title: {
-    fontSize: 22,
-    fontWeight: "700",
+    fontSize: 26,
+    fontWeight: "800",
     marginBottom: 10,
-    color: "#111",
+    color: INK,
   },
 
   searchBar: {
-    backgroundColor: "#f2f2f2",
-    borderRadius: 10,
+    backgroundColor: "#F2F2F6",
+    borderRadius: 12,
     padding: 10,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#E5E7EB",
   },
 
-  filtrosContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 10,
-  },
-  filtroBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    backgroundColor: "#fff",
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  filtroBtnActivo: {
-    backgroundColor: "#00bfa5",
-    borderColor: "#00bfa5",
-  },
-  filtroText: {
-    fontSize: 12,
-    color: "#374151",
-    fontWeight: "500",
-  },
-  filtroTextActivo: {
-    color: "#fff",
-    fontWeight: "700",
-  },
-
+  /* TARJETAS iOS */
   card: {
-    backgroundColor: "#fff",
-    padding: 12,
-    borderRadius: 12,
-    marginVertical: 6,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 2 },
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
     borderLeftWidth: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.07,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 3,
   },
+
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
   },
-  titulo: {
-    fontWeight: "bold",
-    fontSize: 14,
-    color: "#111827",
+
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: INK,
     flex: 1,
-    marginRight: 8,
+    marginRight: 12,
   },
-  estado: {
+
+  estadoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+
+  estadoDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+
+  estadoText: {
     fontSize: 12,
     fontWeight: "700",
   },
@@ -300,43 +299,44 @@ const styles = StyleSheet.create({
   destinoText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#111827",
+    color: INK,
   },
   cirugiaText: {
     fontSize: 12,
     color: "#4B5563",
   },
-  fechaNecesariaText: {
-    marginTop: 4,
+
+  fechaNecesaria: {
+    marginTop: 6,
     fontSize: 12,
     color: "#6B7280",
   },
 
-  itemsContainer: {
-    marginTop: 4,
-  },
+  itemsContainer: { marginTop: 6 },
   item: {
     fontSize: 12,
     color: "#4B5563",
     marginVertical: 1,
   },
-  fecha: {
-    marginTop: 6,
+
+  fechaCreacion: {
+    marginTop: 8,
     fontSize: 11,
+    color: "#9CA3AF",
+  },
+
+  emptyContainer: {
+    marginTop: 40,
+    alignItems: "center",
+  },
+  emptyText: {
+    fontSize: 14,
     color: "#9CA3AF",
   },
 
   loadingText: {
     textAlign: "center",
     marginTop: 20,
-    color: "#666",
-  },
-  emptyContainer: {
-    alignItems: "center",
-    marginTop: 40,
-  },
-  emptyText: {
-    color: "#888",
-    fontSize: 14,
+    color: "#6B7280",
   },
 });

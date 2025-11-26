@@ -58,16 +58,9 @@ export default function SolicitudesScreen() {
   };
 
   // Crear solicitud rápida
-  const crearSolicitudRapida = async (item) => {
+  const crearSolicitudRapida = async (solicitud) => {
     try {
-      await createSolicitud({
-        usuario,
-        rol,
-        estado: "Pendiente",
-        creadoEn: Date.now(),
-        tipo: "rapida",
-        items: [item], // ← SOLO 1 ITEM
-      });
+      await createSolicitud(solicitud);
 
       Alert.alert("Solicitud rápida enviada");
       setModalRapidaVisible(false);

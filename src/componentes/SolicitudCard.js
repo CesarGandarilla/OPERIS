@@ -79,36 +79,43 @@ export default function SolicitudCard({
       </View>
 
       {/* Botones CEyE */}
+      
       {rol === "ceye" && (
         <View style={styles.actionsContainer}>
-          {item.estado === "Pendiente" && (
-            <View style={styles.row}>
-              <TouchableOpacity
-                style={styles.btnAceptar}
-                onPress={() => onAceptar(item.id)}
-              >
-                <Text style={styles.btnText}>Aceptar</Text>
-              </TouchableOpacity>
+          {/* SOLO mostrar botones cuando CEyE puede actuar */}
+          {(item.estado === "Pendiente" || item.estado === "Aceptada") && (
+            <>
+              {item.estado === "Pendiente" && (
+                <View style={styles.row}>
+                  <TouchableOpacity
+                    style={styles.btnAceptar}
+                    onPress={() => onAceptar(item.id)}
+                  >
+                    <Text style={styles.btnText}>Aceptar</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.btnRechazar}
-                onPress={() => onRechazar(item.id)}
-              >
-                <Text style={styles.btnText}>Rechazar</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+                  <TouchableOpacity
+                    style={styles.btnRechazar}
+                    onPress={() => onRechazar(item.id)}
+                  >
+                    <Text style={styles.btnText}>Rechazar</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-          {item.estado === "Aceptada" && (
-            <TouchableOpacity
-              style={styles.btnLista}
-              onPress={() => onMarcarLista(item.id)}
-            >
-              <Text style={styles.btnText}>Marcar como Lista</Text>
-            </TouchableOpacity>
+              {item.estado === "Aceptada" && (
+                <TouchableOpacity
+                  style={styles.btnLista}
+                  onPress={() => onMarcarLista(item.id)}
+                >
+                  <Text style={styles.btnText}>Marcar como Lista</Text>
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
       )}
+
 
       {/* Verificación del solicitante */}
       {rol !== "ceye" &&

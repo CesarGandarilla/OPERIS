@@ -120,11 +120,12 @@ export function AuthProvider({ children }) {
       );
 
       const profile = await fetchProfile(uid, token);
-
+      // ⚠️ Aquí queda guardado el rol dentro de profile.role
       setUser({ uid, email: trimmedEmail, token, profile });
+
       return {
         user: { uid, email: trimmedEmail, token, profile },
-        role: profile.role,
+        role: profile.role, // <- este es el rol que usamos en InventarioScreen (user.profile.role)
       };
     } catch (e) {
       console.log("Error en register:", e);
@@ -164,7 +165,9 @@ export function AuthProvider({ children }) {
       const { uid, token } = await loginUser(trimmedEmail, password);
       const profile = await fetchProfile(uid, token);
 
+      // ⚠️ Igual aquí: el rol está en profile.role
       setUser({ uid, email: trimmedEmail, token, profile });
+
       return {
         user: { uid, email: trimmedEmail, token, profile },
         role: profile.role,

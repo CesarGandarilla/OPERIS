@@ -1,5 +1,6 @@
 // src/pantallas/ReportesScreen.js
 import React, { useEffect, useMemo, useState } from "react";
+import EstadoBadge from "../componentes/EstadoBadge"; // ajusta la ruta si es diferente
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   View,
@@ -26,7 +27,7 @@ const screenWidth = Dimensions.get("window").width;
 
 const PIE_COLORS = ["#00BFA5", "#60A5FA", "#F59E0B", "#EF4444", "#6B7280"];
 
-// 🎨 ESTILOS PARA ESTADOS (con dot de color)
+// (opcional) helper para estilos de estado si lo usas más adelante
 const getEstadoStyle = (estado) => {
   const est = estado?.toLowerCase();
 
@@ -61,7 +62,7 @@ const getEstadoStyle = (estado) => {
   };
 };
 
-const ReportesScreen = () => {
+const ReportesScreen = ({ navigation }) => {
   const [solicitudes, setSolicitudes] = useState([]);
   const [filtroRango, setFiltroRango] = useState("7d");
   const [filtroDestino, setFiltroDestino] = useState("todos");
@@ -97,6 +98,7 @@ const ReportesScreen = () => {
     }
     return null;
   };
+
   const solicitudesFiltradas = useMemo(() => {
     if (!Array.isArray(solicitudes)) return [];
 
@@ -291,21 +293,38 @@ const ReportesScreen = () => {
     return valor.toFixed(1);
   };
 
+  // 🔹 filtro de estados SOLO problema, verificada y rechazada
   const solicitudesFiltradasPorEstado = useMemo(() => {
     if (!Array.isArray(solicitudesFiltradas)) return [];
 
     return solicitudesFiltradas.filter((s) => {
       const estado = (s.estado || "").toLowerCase();
 
-      if (filtroEstado === "todas") return true;
-      if (filtroEstado === "completadas") {
-        return estado === "lista" || estado === "verificada";
+      // excluir siempre pendientes y listas
+      if (estado === "pendiente" || estado === "lista") {
+        return false;
       }
+
+      // "todas": solo problema, verificada y rechazada
+      if (filtroEstado === "todas") {
+        return (
+          estado === "problema" ||
+          estado === "verificada" ||
+          estado === "rechazada"
+        );
+      }
+
+      // "completadas": solo verificadas
+      if (filtroEstado === "completadas") {
+        return estado === "verificada";
+      }
+
+      // "rechazadas": solo rechazadas
       if (filtroEstado === "rechazadas") {
         return estado === "rechazada";
       }
 
-      return true;
+      return false;
     });
   }, [solicitudesFiltradas, filtroEstado]);
 
@@ -324,7 +343,6 @@ const ReportesScreen = () => {
   const ACCENT = tema?.colores?.accent || "#00BFA5";
   const BG = tema?.colores?.bg || "#F7F8FA";
   const INK = tema?.colores?.ink || "#111827";
-
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: BG }]}>
       <ScrollView
@@ -480,11 +498,13 @@ const ReportesScreen = () => {
             <Text style={styles.cardTitle}>Consumo por insumo</Text>
             <Feather name="search" size={18} color="#6B7280" />
           </View>
+
           <Text style={styles.helperText}>
             Busca un insumo para ver su consumo en el periodo filtrado
             {filtroDestino !== "todos" ? " para este destino." : "."}
           </Text>
 
+          {/* BUSCADOR */}
           <View style={[styles.searchRow, { backgroundColor: "#F6F9F8" }]}>
             <AntDesign name="search" size={16} color="#9CA3AF" />
             <TextInput
@@ -498,6 +518,7 @@ const ReportesScreen = () => {
               }}
               selectionColor={ACCENT}
             />
+
             {insumoBusqueda.length > 0 && (
               <TouchableOpacity
                 onPress={() => {
@@ -505,69 +526,73 @@ const ReportesScreen = () => {
                   setInsumoSeleccionadoId(null);
                 }}
               >
-                <AntDesign name="closecircle" size={16} color="#9CA3AF" />
+                <AntDesign name="closecircleo" size={16} color="#9CA3AF" />
               </TouchableOpacity>
             )}
           </View>
+          {/* LISTA DE INSUMOS */}
+          {insumosParaBusqueda.length > 0 && (
+            <View style={styles.insumosListaContainer}>
+              {insumosParaBusqueda.map((i) => {
+                const isSelected = insumoSeleccionadoId === i.id;
 
-{insumosParaBusqueda.length > 0 && (
-  <View style={styles.insumosListaContainer}>
-    {insumosParaBusqueda.map((i) => (
-      <TouchableOpacity
-        key={i.id}
-        style={[
-          styles.insumoChip,
-          insumoSeleccionadoId === i.id && styles.insumoChipActive,
-        ]}
-        onPress={() => {
-          setInsumoSeleccionadoId(i.id);
-          setInsumoBusqueda(i.nombre);
-        }}
-      >
-        
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          {/* CÍRCULO DEL NÚMERO */}
-          <View
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 13,
-              backgroundColor: "#E0F2F1",
-              justifyContent: "center",
-              alignItems: "center",
-              marginRight: 10,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: "700",
-                color: "#00BFA5",
-              }}
-            >
-              {i.totalCantidad}
-            </Text>
-          </View>
+                return (
+                  <TouchableOpacity
+                    key={i.id}
+                    style={[
+                      styles.insumoChip,
+                      isSelected && styles.insumoChipActive,
+                    ]}
+                    onPress={() => {
+                      if (isSelected) {
+                        setInsumoSeleccionadoId(null);
+                        setInsumoBusqueda("");
+                      } else {
+                        setInsumoSeleccionadoId(i.id);
+                        setInsumoBusqueda(i.nombre);
+                      }
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <View
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 13,
+                          backgroundColor: "#E0F2F1",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          marginRight: 10,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: "#00BFA5",
+                          }}
+                        >
+                          {i.totalCantidad}
+                        </Text>
+                      </View>
 
-          {/* TEXTO DEL INSUMO */}
-          <Text
-            style={[
-              styles.insumoChipText,
-              insumoSeleccionadoId === i.id && styles.insumoChipTextActive,
-            ]}
-            numberOfLines={1}
-          >
-            {i.nombre}
-          </Text>
-        </View>
+                      <Text
+                        style={[
+                          styles.insumoChipText,
+                          isSelected && styles.insumoChipTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {i.nombre}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
 
-      </TouchableOpacity>
-    ))}
-  </View>
-)}
-
-
-
+          {/* DETALLES DEL INSUMO */}
           {insumoSeleccionadoId && insumoSeleccionadoDetalle && (
             <View style={styles.consumoCard}>
               <Text style={styles.consumoTitle}>
@@ -607,11 +632,14 @@ const ReportesScreen = () => {
                   <Text style={[styles.consumoLabel, { marginTop: 8 }]}>
                     Destinos que más lo solicitan:
                   </Text>
-                  {insumoSeleccionadoDetalle.destinos.slice(0, 3).map((d, idx) => (
-                    <Text key={idx} style={styles.consumoDestinoItem}>
-                      • {d.nombre} ({d.count} solicitudes)
-                    </Text>
-                  ))}
+
+                  {insumoSeleccionadoDetalle.destinos
+                    .slice(0, 3)
+                    .map((d, idx) => (
+                      <Text key={idx} style={styles.consumoDestinoItem}>
+                        • {d.nombre} ({d.count} solicitudes)
+                      </Text>
+                    ))}
                 </>
               )}
             </View>
@@ -625,6 +653,7 @@ const ReportesScreen = () => {
             {solicitudesFiltradasPorEstado.length} solicitudes en el periodo elegido
           </Text>
 
+          {/* CHIPS */}
           <View style={[styles.chipRow, { marginTop: 4 }]}>
             {[
               { id: "todas", label: "Todas" },
@@ -654,6 +683,7 @@ const ReportesScreen = () => {
             ))}
           </View>
 
+          {/* SI NO HAY SOLICITUDES */}
           {solicitudesFiltradasPorEstado.length === 0 ? (
             <Text style={styles.emptyText}>
               No se encontraron solicitudes con los filtros actuales.
@@ -678,27 +708,19 @@ const ReportesScreen = () => {
 
               const numItems = (s.items || []).length;
 
-              const est = getEstadoStyle(s.estado);
-
               return (
                 <View key={s.id} style={styles.solicitudItem}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.solicitudFecha}>{fechaTexto}</Text>
                     <Text style={styles.solicitudDestino}>{destinoNombre}</Text>
+
                     <Text style={styles.solicitudDetalle}>
-                      {numItems} insumo{s.items?.length === 1 ? "" : "s"} ·{" "}
-                      
-                      {/* BADGE DE ESTADO CON DOT */}
-                      <Text
-                        style={[
-                          styles.estadoBadge,
-                          { backgroundColor: est.backgroundColor, color: est.color },
-                        ]}
-                      >
-                        <Text style={{ color: est.dot }}>● </Text>
-                        {s.estado || "Sin estado"}
-                      </Text>
+                      {numItems} insumo{s.items?.length === 1 ? "" : "s"}
                     </Text>
+
+                    <View style={{ marginTop: 4 }}>
+                      <EstadoBadge estado={s.estado} />
+                    </View>
                   </View>
                 </View>
               );
@@ -713,6 +735,7 @@ const ReportesScreen = () => {
 };
 
 export default ReportesScreen;
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,

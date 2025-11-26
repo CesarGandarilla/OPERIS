@@ -293,21 +293,38 @@ const ReportesScreen = ({ navigation }) => {
     return valor.toFixed(1);
   };
 
+  // 🔹 filtro de estados SOLO problema, verificada y rechazada
   const solicitudesFiltradasPorEstado = useMemo(() => {
     if (!Array.isArray(solicitudesFiltradas)) return [];
 
     return solicitudesFiltradas.filter((s) => {
       const estado = (s.estado || "").toLowerCase();
 
-      if (filtroEstado === "todas") return true;
-      if (filtroEstado === "completadas") {
-        return estado === "lista" || estado === "verificada";
+      // excluir siempre pendientes y listas
+      if (estado === "pendiente" || estado === "lista") {
+        return false;
       }
+
+      // "todas": solo problema, verificada y rechazada
+      if (filtroEstado === "todas") {
+        return (
+          estado === "problema" ||
+          estado === "verificada" ||
+          estado === "rechazada"
+        );
+      }
+
+      // "completadas": solo verificadas
+      if (filtroEstado === "completadas") {
+        return estado === "verificada";
+      }
+
+      // "rechazadas": solo rechazadas
       if (filtroEstado === "rechazadas") {
         return estado === "rechazada";
       }
 
-      return true;
+      return false;
     });
   }, [solicitudesFiltradas, filtroEstado]);
 
@@ -958,6 +975,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#374151",
   },
-
 });
-

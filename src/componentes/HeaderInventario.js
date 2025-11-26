@@ -9,13 +9,18 @@ export default function HeaderInventario({ agregarInsumo }) {
   return (
     <View style={styles.header}>
       <Text style={[styles.title, { color: INK }]}>Inventario</Text>
-      <TouchableOpacity style={styles.addButton} onPress={agregarInsumo}>
-        <Ionicons name="add" size={22} color="white" />
-        <Text style={styles.addButtonText}>Agregar</Text>
-      </TouchableOpacity>
+
+      {/* ⭐ SOLO mostrar botón si agregarInsumo existe */}
+      {agregarInsumo && (
+        <TouchableOpacity style={styles.addButton} onPress={agregarInsumo}>
+          <Ionicons name="add" size={22} color="white" />
+          <Text style={styles.addButtonText}>Agregar</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
+
 const INK = tema?.colores?.ink || "#111827";
 
 const styles = StyleSheet.create({
@@ -34,7 +39,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 10,
   },
-      title: {
+  title: {
     fontSize: 26,
     fontWeight: "800",
     marginBottom: 12,

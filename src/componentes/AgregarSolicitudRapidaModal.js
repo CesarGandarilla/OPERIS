@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
+import { tema } from "../tema"
 
 export default function AgregarSolicitudRapidaModal({
   visible,
@@ -24,14 +25,16 @@ export default function AgregarSolicitudRapidaModal({
   rol,
   onEnviar,
 }) {
-  const [insumos, setInsumos] = useState([]);
-  const [busqueda, setBusqueda] = useState("");
   const [insumoSeleccionado, setInsumoSeleccionado] = useState(null);
   const [cantidad, setCantidad] = useState("");
+  const [insumos, setInsumos] = useState([]);
+  const [busqueda, setBusqueda] = useState("");
+  const [itemsSeleccionados, setItemsSeleccionados] = useState([]);
   const [urgente, setUrgente] = useState(false);
   const [comentario, setComentario] = useState("");
   const [mostrarResultados, setMostrarResultados] = useState(false);
   const [errores, setErrores] = useState({ cantidad: "", insumo: "" });
+  
 
   useEffect(() => {
     const cargar = async () => {
@@ -65,10 +68,13 @@ export default function AgregarSolicitudRapidaModal({
     setUrgente(false);
     setComentario("");
     setMostrarResultados(false);
+    setItemsSeleccionados([])
     setErrores({ cantidad: "", insumo: "" });
   };
 
-  const handleEnviar = () => {
+  
+
+  const agregarItem = () => {
     let huboError = false;
     const nuevos = { cantidad: "", insumo: "" };
 
@@ -88,36 +94,49 @@ export default function AgregarSolicitudRapidaModal({
       return;
     }
 
-    // 👇 Formato FINAL consistente con createSolicitud
-    const solicitudRapida = {
+    const nuevo = {
+      insumoId: insumoSeleccionado.id,
+      nombre: insumoSeleccionado.nombre,
+      cantidad: cantidadNum,
+      urgente,
+      comentario: comentario?.trim() || "",
+    };
+
+    setItemsSeleccionados((p) => [...p, nuevo]);
+
+    // limpiar campos para agregar otro
+    setInsumoSeleccionado(null);
+    setCantidad("");
+    setBusqueda("");
+    setUrgente(false);
+    setComentario("");
+    setErrores({ cantidad: "", insumo: "" });
+  };
+  
+  const enviarSolicitud = () => {
+    if (itemsSeleccionados.length === 0) {
+      Alert.alert("Error", "Agrega al menos un insumo.");
+      return;
+    }
+
+    const solicitud = {
       tipo: "rapida",
       usuario,
       rol,
       estado: "Pendiente",
       creadoEn: Date.now(),
-
-      // 👇 items igual que la solicitud normal
-      items: [
-        {
-          insumoId: insumoSeleccionado.id,
-          nombre: insumoSeleccionado.nombre,
-          cantidad: cantidadNum,
-          urgente,
-          comentario: comentario?.trim() || "",
-        },
-      ],
-
-      // estas no se usan en rápida, pero se envían vacías por compatibilidad
+      items: itemsSeleccionados,
       fechaNecesaria: null,
       destino: "",
       cirugia: "",
     };
 
-    onEnviar(solicitudRapida);
+    onEnviar(solicitud);
 
     resetFormulario();
     onClose();
   };
+
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -228,13 +247,49 @@ export default function AgregarSolicitudRapidaModal({
                   placeholderTextColor="#999"
                 />
               </ScrollView>
+              {/*Botón de agregar más shet */}
+                   <TouchableOpacity
+                      style={{
+                        backgroundColor: "#4CAF50",
+                        padding: 12,
+                        borderRadius: 8,
+                        marginTop: 10,
+                      }}
+                      onPress={agregarItem}
+                    >
+                      <Text style={{ color: "white", fontWeight: "600", textAlign: "center" }}>
+                        Agregar insumo
+                      </Text>
+                    </TouchableOpacity>
 
-              {/* Botón enviar */}
-              <View style={styles.navRow}>
-                <TouchableOpacity style={styles.navButton} onPress={handleEnviar}>
-                  <Text style={styles.navButtonText}>Enviar rápida</Text>
-                </TouchableOpacity>
-              </View>
+                    {/* Mostrar lista de los insumos agregados */}
+                    {itemsSeleccionados.length > 0 && (
+                      <View style={{ marginTop: 15 }}>
+                        <Text style={{ fontWeight: "700", marginBottom: 5 }}>
+                          Insumos agregados:
+                        </Text>
+
+                        {itemsSeleccionados.map((item, index) => (
+                          <Text key={index}>• {item.nombre} — {item.cantidad}</Text>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Botón final para enviar la solicitud */}
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: tema.colorPrincipal,
+                        padding: 15,
+                        borderRadius: 8,
+                        marginTop: 20,
+                      }}
+                      onPress={enviarSolicitud}
+                    >
+                      <Text style={{ color: "white", fontWeight: "600", textAlign: "center" }}>
+                        Enviar solicitud
+                      </Text>
+                    </TouchableOpacity>
+              
 
               {/* Cancelar */}
               <TouchableOpacity

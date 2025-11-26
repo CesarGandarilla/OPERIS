@@ -58,16 +58,9 @@ export default function SolicitudesScreen() {
   };
 
   // Crear solicitud rápida
-  const crearSolicitudRapida = async (item) => {
+  const crearSolicitudRapida = async (solicitud) => {
     try {
-      await createSolicitud({
-        usuario,
-        rol,
-        estado: "Pendiente",
-        creadoEn: Date.now(),
-        tipo: "rapida",
-        items: [item], // ← SOLO 1 ITEM
-      });
+      await createSolicitud(solicitud);
 
       Alert.alert("Solicitud rápida enviada");
       setModalRapidaVisible(false);
@@ -84,10 +77,20 @@ export default function SolicitudesScreen() {
   }, []);
 
   // CEyE ve todo, los demás solo las suyas
-  const solicitudesMostradas =
-    rol === "ceye"
-      ? solicitudes
-      : solicitudes.filter((s) => s.usuario === usuario);
+  // 1. Primero filtrar las NO finalizadas
+  const solicitudesActivas = solicitudes.filter((s) => {
+  // Solicitudes que sí deben seguir apareciendo
+    const activasCEYE = ["Pendiente", "Aceptada"];
+    const activasOtros = ["Pendiente"];
+
+    return rol === "ceye"
+      ? activasCEYE.includes(s.estado)
+      : activasOtros.includes(s.estado) && s.usuario === usuario;
+  });
+
+  // 2. CEYE ve todas las activas; otros solo las suyas (ya está arriba)
+  const solicitudesMostradas = solicitudesActivas;
+
 
   // Ordenar por urgencia → fecha necesaria → fecha creación
   const solicitudesOrdenadas = [...solicitudesMostradas].sort((a, b) => {

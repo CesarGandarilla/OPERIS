@@ -50,9 +50,15 @@ export default function InsumoCard({ item, onEdit }) {
         <Text style={styles.stock}>Stock: {stock}</Text>
         <Text style={styles.codigo}>Código: {item.codigo}</Text>
 
-        <TouchableOpacity style={styles.editButton} onPress={() => onEdit(item)}>
-          <Text style={styles.editText}>Editar</Text>
-        </TouchableOpacity>
+        {/* ⭐ SOLO mostrar botón si onEdit existe (solo CEyE) */}
+        {onEdit && (
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => onEdit(item)}
+          >
+            <Text style={styles.editText}>Editar</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
     </View>

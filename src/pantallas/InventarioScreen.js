@@ -17,6 +17,7 @@ import FiltrosInventario from "../componentes/FiltrosInventario";
 import InsumoCard from "../componentes/InsumoCard";
 import AgregarInsumoModal from "../componentes/AgregarInsumoModal";
 import EditarInsumoModal from "../componentes/EditarInsumoModal";
+import { useAuth } from "../auth/AuthContext"; // 👈 añadido
 
 // 🔹 función auxiliar para clasificar el estado de stock
 const getEstadoStock = (item) => {
@@ -34,7 +35,15 @@ const getEstadoStock = (item) => {
 };
 
 export default function InventarioScreen({ route }) {
-  const [filtro, setFiltro] = useState("Todos"); 
+  const { user } = useAuth(); // 👈 seguimos usando Auth
+
+  // 👇 detectar CEyE desde user.profile.role
+  const rolCrudo = user?.profile?.role;
+  const rolNormalizado =
+    typeof rolCrudo === "string" ? rolCrudo.trim().toLowerCase() : "";
+  const esCEyE = rolNormalizado === "ceye";
+
+  const [filtro, setFiltro] = useState("Todos");
   const [estadoFiltro, setEstadoFiltro] = useState("Todos");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -119,7 +128,11 @@ export default function InventarioScreen({ route }) {
       <View style={styles.container}>
 
         {/* Botón agregar */}
-        <HeaderInventario agregarInsumo={() => setMostrarModalAgregar(true)} />
+        <HeaderInventario
+          agregarInsumo={
+            esCEyE ? () => setMostrarModalAgregar(true) : undefined
+          }
+        />
 
         {/* Barra de búsqueda */}
         <TextInput
@@ -150,7 +163,10 @@ export default function InventarioScreen({ route }) {
             data={insumosFiltrados}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <InsumoCard item={item} onEdit={handleEdit} />
+              <InsumoCard
+                item={item}
+                onEdit={esCEyE ? handleEdit : undefined}
+              />
             )}
             contentContainerStyle={{
               paddingBottom: 30,
@@ -166,17 +182,21 @@ export default function InventarioScreen({ route }) {
         )}
 
         {/* Modal agregar */}
-        <AgregarInsumoModal
-          visible={mostrarModalAgregar}
-          onClose={() => setMostrarModalAgregar(false)}
-        />
+        {esCEyE && (
+          <AgregarInsumoModal
+            visible={mostrarModalAgregar}
+            onClose={() => setMostrarModalAgregar(false)}
+          />
+        )}
 
         {/* Modal editar */}
-        <EditarInsumoModal
-          visible={modalEditarVisible}
-          onClose={() => setModalEditarVisible(false)}
-          insumo={insumoSeleccionado}
-        />
+        {esCEyE && (
+          <EditarInsumoModal
+            visible={modalEditarVisible}
+            onClose={() => setModalEditarVisible(false)}
+            insumo={insumoSeleccionado}
+          />
+        )}
       </View>
     </SafeAreaView>
   );

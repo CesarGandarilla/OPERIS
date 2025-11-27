@@ -250,7 +250,7 @@ export default function AgregarSolicitudRapidaModal({
               {/*Botón de agregar más shet */}
                    <TouchableOpacity
                       style={{
-                        backgroundColor: "#4CAF50",
+                        backgroundColor: "#00bfa5",
                         padding: 12,
                         borderRadius: 8,
                         marginTop: 10,

@@ -217,7 +217,7 @@ export default function PanelDeControlScreen({ navigation }) {
               <StatCard
                 icon={
                   <AntDesign
-                    name="shoppingcart"
+                    name="shopping-cart"
                     size={24}
                     color="#60A5FA"
                   />

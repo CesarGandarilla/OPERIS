@@ -20,12 +20,20 @@ import { LUGARES_ENTREGA } from "../constants/lugaresEntrega";
 const RANGOS = [
   { id: "7d", label: "Últimos 7 días", dias: 7 },
   { id: "30d", label: "Últimos 30 días", dias: 30 },
-  { id: "todo", label: "Todo", dias: null },
+  { id: "todo", label: "Todo", dias: null }, // 👈 "ver todo"
 ];
 
 const screenWidth = Dimensions.get("window").width;
 
 const PIE_COLORS = ["#00BFA5", "#60A5FA", "#F59E0B", "#EF4444", "#6B7280"];
+
+// helper para quitar acentos y unificar búsqueda
+const normalizeText = (str) =>
+  (str ?? "")
+    .toString()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 // (opcional) helper para estilos de estado si lo usas más adelante
 const getEstadoStyle = (estado) => {
@@ -71,6 +79,7 @@ const ReportesScreen = ({ navigation }) => {
   const [insumoSeleccionadoId, setInsumoSeleccionadoId] = useState(null);
 
   const [filtroEstado, setFiltroEstado] = useState("todas");
+  const [busquedaSolicitud, setBusquedaSolicitud] = useState(""); // 🔍 búsqueda de solicitudes
 
   useEffect(() => {
     const unsub = listenSolicitudes((lista) => {
@@ -99,19 +108,21 @@ const ReportesScreen = ({ navigation }) => {
     return null;
   };
 
+  // 🔹 filtro por rango de fechas + destino
   const solicitudesFiltradas = useMemo(() => {
     if (!Array.isArray(solicitudes)) return [];
 
     const ahora = new Date();
+    const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
     let fechaDesde = null;
 
     const rangoConf = RANGOS.find((r) => r.id === filtroRango);
 
     if (rangoConf && rangoConf.dias != null) {
       fechaDesde = new Date(
-        ahora.getFullYear(),
-        ahora.getMonth(),
-        ahora.getDate() - rangoConf.dias
+        hoy.getFullYear(),
+        hoy.getMonth(),
+        hoy.getDate() - rangoConf.dias
       );
     }
 
@@ -119,7 +130,9 @@ const ReportesScreen = ({ navigation }) => {
       const base = s.fechaNecesaria ?? s.creadoEn;
       const fecha = toDate(base);
       if (!fecha) return false;
+
       if (fechaDesde && fecha < fechaDesde) return false;
+
       if (filtroDestino !== "todos") {
         if (s.destinoId) {
           if (s.destinoId !== filtroDestino) return false;
@@ -132,6 +145,7 @@ const ReportesScreen = ({ navigation }) => {
     });
   }, [solicitudes, filtroRango, filtroDestino]);
 
+  // 🔹 destinos top
   const topDestinos = useMemo(() => {
     if (filtroDestino !== "todos") return [];
     const conteo = {};
@@ -154,6 +168,7 @@ const ReportesScreen = ({ navigation }) => {
     return listado.slice(0, 5);
   }, [solicitudesFiltradas, filtroDestino]);
 
+  // 🔹 top insumos
   const topInsumos = useMemo(() => {
     const conteo = {};
     solicitudesFiltradas.forEach((s) => {
@@ -175,6 +190,7 @@ const ReportesScreen = ({ navigation }) => {
     return listado.slice(0, 5);
   }, [solicitudesFiltradas]);
 
+  // 🔹 agregados por insumo (para búsqueda de consumo)
   const insumosAggregados = useMemo(() => {
     const mapa = {};
     solicitudesFiltradas.forEach((s) => {
@@ -198,6 +214,7 @@ const ReportesScreen = ({ navigation }) => {
     return mapa;
   }, [solicitudesFiltradas]);
 
+  // 🔹 lista de insumos para el buscador de consumo (ahora sin acentos)
   const insumosParaBusqueda = useMemo(() => {
     const lista = Object.values(insumosAggregados);
     if (!insumoBusqueda.trim()) {
@@ -206,13 +223,14 @@ const ReportesScreen = ({ navigation }) => {
         .slice(0, 10);
     }
 
-    const texto = insumoBusqueda.toLowerCase();
+    const texto = normalizeText(insumoBusqueda);
     return lista
-      .filter((i) => i.nombre.toLowerCase().includes(texto))
+      .filter((i) => normalizeText(i.nombre).includes(texto))
       .sort((a, b) => b.totalCantidad - a.totalCantidad)
       .slice(0, 10);
   }, [insumosAggregados, insumoBusqueda]);
 
+  // 🔹 detalle de insumo seleccionado (consumo)
   const insumoSeleccionadoDetalle = useMemo(() => {
     if (!insumoSeleccionadoId) return null;
 
@@ -293,40 +311,75 @@ const ReportesScreen = ({ navigation }) => {
     return valor.toFixed(1);
   };
 
-  // 🔹 filtro de estados SOLO problema, verificada y rechazada
+  // 🔹 filtro de estados SOLO problema, verificada y rechazada + búsqueda (sin acentos)
   const solicitudesFiltradasPorEstado = useMemo(() => {
     if (!Array.isArray(solicitudesFiltradas)) return [];
+
+    const texto = normalizeText(busquedaSolicitud.trim());
 
     return solicitudesFiltradas.filter((s) => {
       const estado = (s.estado || "").toLowerCase();
 
-      // excluir siempre pendientes y listas
-      if (estado === "pendiente" || estado === "lista") {
+      // excluir siempre pedidos aún en flujo
+      if (
+        estado === "pendiente" ||
+        estado === "lista" ||
+        estado === "aceptada"
+      ) {
         return false;
       }
 
-      // "todas": solo problema, verificada y rechazada
+      // filtro por estado
+      let pasaEstado = false;
       if (filtroEstado === "todas") {
-        return (
+        pasaEstado =
           estado === "problema" ||
           estado === "verificada" ||
-          estado === "rechazada"
-        );
+          estado === "rechazada";
+      } else if (filtroEstado === "completadas") {
+        pasaEstado = estado === "verificada";
+      } else if (filtroEstado === "rechazadas") {
+        pasaEstado = estado === "rechazada";
       }
 
-      // "completadas": solo verificadas
-      if (filtroEstado === "completadas") {
-        return estado === "verificada";
-      }
+      if (!pasaEstado) return false;
 
-      // "rechazadas": solo rechazadas
-      if (filtroEstado === "rechazadas") {
-        return estado === "rechazada";
-      }
+      // si no hay texto de búsqueda, ya pasó
+      if (!texto) return true;
 
-      return false;
+      const usuarioStr = normalizeText(s.usuario);
+      const destinoStr = normalizeText(
+        s.destino ||
+          LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
+          ""
+      );
+      const cirugiaStr = normalizeText(s.cirugia);
+      const itemsStr = normalizeText(
+        (s.items || [])
+          .map((it) => it.nombre || "")
+          .join(" ")
+      );
+
+      const fecha = toDate(s.fechaNecesaria ?? s.creadoEn);
+      const fechaStr = normalizeText(
+        fecha
+          ? fecha.toLocaleDateString("es-MX", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            })
+          : ""
+      );
+
+      return (
+        usuarioStr.includes(texto) ||
+        destinoStr.includes(texto) ||
+        cirugiaStr.includes(texto) ||
+        itemsStr.includes(texto) ||
+        fechaStr.includes(texto)
+      );
     });
-  }, [solicitudesFiltradas, filtroEstado]);
+  }, [solicitudesFiltradas, filtroEstado, busquedaSolicitud]);
 
   const pieDataDestinos = useMemo(() => {
     if (!topDestinos || topDestinos.length === 0) return [];
@@ -343,6 +396,7 @@ const ReportesScreen = ({ navigation }) => {
   const ACCENT = tema?.colores?.accent || "#00BFA5";
   const BG = tema?.colores?.bg || "#F7F8FA";
   const INK = tema?.colores?.ink || "#111827";
+
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: BG }]}>
       <ScrollView
@@ -350,7 +404,9 @@ const ReportesScreen = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.title, { color: INK }]}>Resumen de solicitudes</Text>
+        <Text style={[styles.title, { color: INK }]}>
+          Resumen de solicitudes
+        </Text>
 
         {/* FILTROS */}
         <View style={[styles.card, styles.cardElevated]}>
@@ -363,7 +419,10 @@ const ReportesScreen = ({ navigation }) => {
                 key={r.id}
                 style={[
                   styles.chip,
-                  filtroRango === r.id && { ...styles.chipActive, backgroundColor: ACCENT },
+                  filtroRango === r.id && {
+                    ...styles.chipActive,
+                    backgroundColor: ACCENT,
+                  },
                 ]}
                 onPress={() => setFiltroRango(r.id)}
               >
@@ -384,7 +443,10 @@ const ReportesScreen = ({ navigation }) => {
             <TouchableOpacity
               style={[
                 styles.chip,
-                filtroDestino === "todos" && { ...styles.chipActive, backgroundColor: ACCENT },
+                filtroDestino === "todos" && {
+                  ...styles.chipActive,
+                  backgroundColor: ACCENT,
+                },
               ]}
               onPress={() => setFiltroDestino("todos")}
             >
@@ -403,7 +465,10 @@ const ReportesScreen = ({ navigation }) => {
                 key={lugar.id}
                 style={[
                   styles.chip,
-                  filtroDestino === lugar.id && { ...styles.chipActive, backgroundColor: ACCENT },
+                  filtroDestino === lugar.id && {
+                    ...styles.chipActive,
+                    backgroundColor: ACCENT,
+                  },
                 ]}
                 onPress={() => setFiltroDestino(lugar.id)}
               >
@@ -420,7 +485,7 @@ const ReportesScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Destinos TOP  */}
+        {/* Destinos TOP */}
         {filtroDestino === "todos" && topDestinos.length > 0 && (
           <View style={[styles.card, styles.cardElevated]}>
             <View style={styles.cardHeaderRow}>
@@ -458,7 +523,8 @@ const ReportesScreen = ({ navigation }) => {
                     ]}
                   />
                   <Text style={styles.legendText}>
-                    {d.name} · <Text style={{ fontWeight: "700" }}>{d.count}</Text>
+                    {d.name} ·{" "}
+                    <Text style={{ fontWeight: "700" }}>{d.count}</Text>
                   </Text>
                 </View>
               ))}
@@ -477,8 +543,12 @@ const ReportesScreen = ({ navigation }) => {
             {topInsumos.map((i, idx) => (
               <View key={i.id} style={styles.rowItem}>
                 <View style={styles.rowLeft}>
-                  <View style={[styles.indexCircle, { backgroundColor: "#F1F8F7" }]}>
-                    <Text style={[styles.indexCircleText, { color: ACCENT }]}>
+                  <View
+                    style={[styles.indexCircle, { backgroundColor: "#F1F8F7" }]}
+                  >
+                    <Text
+                      style={[styles.indexCircleText, { color: ACCENT }]}
+                    >
                       {idx + 1}
                     </Text>
                   </View>
@@ -530,6 +600,7 @@ const ReportesScreen = ({ navigation }) => {
               </TouchableOpacity>
             )}
           </View>
+
           {/* LISTA DE INSUMOS */}
           {insumosParaBusqueda.length > 0 && (
             <View style={styles.insumosListaContainer}>
@@ -616,14 +687,18 @@ const ReportesScreen = ({ navigation }) => {
               <View style={styles.consumoRow}>
                 <Text style={styles.consumoLabel}>Promedio por día:</Text>
                 <Text style={styles.consumoValue}>
-                  {formatearPromedio(insumoSeleccionadoDetalle.promedioPorDia)}
+                  {formatearPromedio(
+                    insumoSeleccionadoDetalle.promedioPorDia
+                  )}
                 </Text>
               </View>
 
               <View style={styles.consumoRow}>
                 <Text style={styles.consumoLabel}>Última solicitud:</Text>
                 <Text style={styles.consumoValue}>
-                  {formatearFechaCorta(insumoSeleccionadoDetalle.fechaUltima)}
+                  {formatearFechaCorta(
+                    insumoSeleccionadoDetalle.fechaUltima
+                  )}
                 </Text>
               </View>
 
@@ -650,10 +725,34 @@ const ReportesScreen = ({ navigation }) => {
         <View style={[styles.card, styles.cardElevated]}>
           <Text style={styles.cardTitle}>Solicitudes filtradas</Text>
           <Text style={styles.cardSubtitleSmall}>
-            {solicitudesFiltradasPorEstado.length} solicitudes en el periodo elegido
+            {solicitudesFiltradasPorEstado.length} solicitudes en el periodo
+            elegido
           </Text>
 
-          {/* CHIPS */}
+          {/* BUSCADOR DE SOLICITUDES */}
+          <View
+            style={[
+              styles.searchRow,
+              { backgroundColor: "#F6F9F8", marginTop: 6, marginBottom: 8 },
+            ]}
+          >
+            <AntDesign name="search" size={16} color="#9CA3AF" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar por usuario, insumo, destino, cirugía o fecha"
+              placeholderTextColor="#9CA3AF"
+              value={busquedaSolicitud}
+              onChangeText={setBusquedaSolicitud}
+              selectionColor={ACCENT}
+            />
+            {busquedaSolicitud.length > 0 && (
+              <TouchableOpacity onPress={() => setBusquedaSolicitud("")}>
+                <AntDesign name="closecircleo" size={16} color="#9CA3AF" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* CHIPS ESTADO */}
           <View style={[styles.chipRow, { marginTop: 4 }]}>
             {[
               { id: "todas", label: "Todas" },
@@ -706,17 +805,43 @@ const ReportesScreen = ({ navigation }) => {
                 LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
                 "Sin destino";
 
-              const numItems = (s.items || []).length;
+              const items = s.items || [];
+              const numItems = items.length;
+              const primerItem = items[0];
+              const textoPrimerItem = primerItem
+                ? `• ${primerItem.nombre || "Insumo"} × ${
+                    primerItem.cantidad ?? 0
+                  }`
+                : "Sin insumos";
+
+              const extraItems =
+                numItems > 1 ? ` · +${numItems - 1} insumo(s) más` : "";
 
               return (
                 <View key={s.id} style={styles.solicitudItem}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.solicitudFecha}>{fechaTexto}</Text>
-                    <Text style={styles.solicitudDestino}>{destinoNombre}</Text>
-
-                    <Text style={styles.solicitudDetalle}>
-                      {numItems} insumo{s.items?.length === 1 ? "" : "s"}
+                    <Text style={styles.solicitudDestino}>
+                      {destinoNombre}
                     </Text>
+
+                    {/* usuario */}
+                    <Text style={styles.solicitudUsuario}>
+                      Solicitó: {s.usuario || "Desconocido"}
+                    </Text>
+
+                    {/* insumos */}
+                    <Text style={styles.solicitudInsumo}>
+                      {textoPrimerItem}
+                      {extraItems}
+                    </Text>
+
+                    {/* cirugía, solo si existe y aplica (elaboradas) */}
+                    {s.cirugia ? (
+                      <Text style={styles.solicitudCirugia}>
+                        Cirugía: {s.cirugia}
+                      </Text>
+                    ) : null}
 
                     <View style={{ marginTop: 4 }}>
                       <EstadoBadge estado={s.estado} />
@@ -934,15 +1059,25 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
   },
-  solicitudDetalle: {
+  solicitudUsuario: {
     fontSize: 13,
     color: "#4B5563",
+    marginTop: 2,
+  },
+  solicitudInsumo: {
+    fontSize: 13,
+    color: "#4B5563",
+    marginTop: 2,
+  },
+  solicitudCirugia: {
+    fontSize: 13,
+    color: "#4B5563",
+    marginTop: 2,
   },
   solicitudEstado: {
     fontWeight: "700",
     color: "#111827",
   },
-
   estadoBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -951,7 +1086,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
-
   chart: {
     marginVertical: 10,
     borderRadius: 14,

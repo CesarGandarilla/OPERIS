@@ -1,14 +1,14 @@
 // src/componentes/SolicitudCard.js
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import {
   formatearFechaCreacion,
   formatFechaNecesaria,
 } from "../utils/fechaUtils";
-import EstadoBadge from "./EstadoBadge"; // ← NUEVO
+import EstadoBadge from "./EstadoBadge";
 
 const getInitial = (usuario) =>
-  usuario?.charAt(0).toUpperCase() || "U";
+  usuario?.charAt(0)?.toUpperCase() || "U";
 
 export default function SolicitudCard({
   item,
@@ -16,10 +16,14 @@ export default function SolicitudCard({
   usuarioActual,
   onAceptar,
   onRechazar,
+  onConfirmarRechazo,
+  onRevertirRechazo,
   onMarcarLista,
   onVerificarOk,
   onVerificarNo,
 }) {
+  const [confirmandoRechazo, setConfirmandoRechazo] = useState(false);
+
   const fechaNecesariaTexto = formatFechaNecesaria(item.fechaNecesaria);
   const fechaCreacionTexto = formatearFechaCreacion(item.creadoEn);
 
@@ -27,31 +31,22 @@ export default function SolicitudCard({
     <View style={styles.card}>
       <View style={styles.cardContent}>
         {/* Avatar */}
-        <View style={[styles.avatar, { backgroundColor: "#f0f0f0" }]}>
+        <View style={styles.avatar}>
           <Text style={styles.avatarText}>{getInitial(item.usuario)}</Text>
         </View>
 
-        {/* Información */}
+        {/* Info */}
         <View style={styles.infoContainer}>
-          {item.destino && (
-            <Text style={styles.destinoText}>{item.destino}</Text>
-          )}
-
-          {item.cirugia && (
-            <Text style={styles.cirugiaText}>{item.cirugia}</Text>
-          )}
-
+          {item.destino && <Text style={styles.destinoText}>{item.destino}</Text>}
+          {item.cirugia && <Text style={styles.cirugiaText}>{item.cirugia}</Text>}
           {fechaNecesariaTexto && (
-            <Text style={styles.fechaNecesariaText}>
-              {fechaNecesariaTexto}
-            </Text>
+            <Text style={styles.fechaNecesariaText}>{fechaNecesariaTexto}</Text>
           )}
 
-          {/* ⬅️ NUEVO BADGE ESTILO iOS */}
           <EstadoBadge estado={item.estado} />
 
           {/* Items */}
-          {item.items && item.items.length > 0 && (
+          {item.items?.length > 0 && (
             <View style={styles.itemsContainer}>
               {item.items.slice(0, 2).map((i, idx) => (
                 <Text key={idx} style={styles.itemText}>
@@ -72,20 +67,20 @@ export default function SolicitudCard({
           </Text>
         </View>
 
-        {/* Fecha creación */}
         <View style={styles.rightContainer}>
           <Text style={styles.fechaText}>{fechaCreacionTexto}</Text>
         </View>
       </View>
 
-      {/* Botones CEyE */}
-      
+      {/* =========================
+          ACCIONES CEYE
+      ========================== */}
       {rol === "ceye" && (
         <View style={styles.actionsContainer}>
-          {/* SOLO mostrar botones cuando CEyE puede actuar */}
-          {(item.estado === "Pendiente" || item.estado === "Aceptada") && (
+          {/* Pendiente */}
+          {item.estado === "Pendiente" && (
             <>
-              {item.estado === "Pendiente" && (
+              {!confirmandoRechazo ? (
                 <View style={styles.row}>
                   <TouchableOpacity
                     style={styles.btnAceptar}
@@ -96,30 +91,61 @@ export default function SolicitudCard({
 
                   <TouchableOpacity
                     style={styles.btnRechazar}
-                    onPress={() => onRechazar(item.id)}
+                    onPress={() => setConfirmandoRechazo(true)}
                   >
                     <Text style={styles.btnText}>Rechazar</Text>
                   </TouchableOpacity>
                 </View>
-              )}
+              ) : (
+                <View style={styles.row}>
+                  <TouchableOpacity
+                    style={styles.btnConfirmarRechazo}
+                    onPress={() => {
+                      onRechazar(item.id);
+                      setConfirmandoRechazo(false);
+                    }}
+                  >
+                    <Text style={styles.btnText}>Confirmar rechazo</Text>
+                  </TouchableOpacity>
 
-              {item.estado === "Aceptada" && (
-                <TouchableOpacity
-                  style={styles.btnLista}
-                  onPress={() => onMarcarLista(item.id)}
-                >
-                  <Text style={styles.btnText}>Marcar como Lista</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.btnUndo}
+                    onPress={() => setConfirmandoRechazo(false)}
+                  >
+                    <Text style={styles.btnText}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </>
+          )}
+
+          {/* Aceptada */}
+          {item.estado === "Aceptada" && (
+            <TouchableOpacity
+              style={styles.btnLista}
+              onPress={() => onMarcarLista(item.id)}
+            >
+              <Text style={styles.btnText}>Marcar como Lista</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Rechazada */}
+          {item.estado === "Rechazada" && (
+            <TouchableOpacity
+              style={styles.btnUndo}
+              onPress={() => onRevertirRechazo(item.id)}
+            >
+              <Text style={styles.btnText}>↩️ Deshacer rechazo</Text>
+            </TouchableOpacity>
           )}
         </View>
       )}
 
-
-      {/* Verificación del solicitante */}
+      {/* =========================
+          ACCIONES ENFERMERÍA
+      ========================== */}
       {rol !== "ceye" &&
-        item.usuario === usuarioActual &&
+        usuarioActual === item.usuario &&
         item.estado === "Lista" && (
           <View style={styles.actionsContainer}>
             <View style={styles.row}>
@@ -147,122 +173,101 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "white",
     borderRadius: 12,
-    marginVertical: 6,
     padding: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    marginVertical: 6,
     elevation: 3,
   },
+
   cardContent: {
     flexDirection: "row",
     alignItems: "flex-start",
   },
+
   avatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
+    backgroundColor: "#f0f0f0",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
   },
   avatarText: {
     fontSize: 20,
-    fontWeight: "bold",
+    fontWeight: "700",
     color: "#555",
   },
-  infoContainer: {
-    flex: 1,
-  },
-  destinoText: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#000",
-  },
-  cirugiaText: {
-    fontSize: 13,
-    color: "#555",
-    marginTop: 2,
-  },
-  fechaNecesariaText: {
-    fontSize: 13,
-    color: "#666",
-    marginTop: 4,
-  },
-  itemsContainer: {
-    marginTop: 8,
-  },
-  itemText: {
-    fontSize: 13,
-    color: "#555",
-    marginVertical: 1,
-  },
-  masText: {
-    fontSize: 12,
-    color: "#888",
-    marginTop: 2,
-  },
-  solicitanteText: {
-    fontSize: 12,
-    color: "#777",
-    marginTop: 8,
-  },
-  rightContainer: {
-    alignItems: "flex-end",
-  },
-  fechaText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#555",
-  },
-  actionsContainer: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#f0f0f0",
-  },
+
+  infoContainer: { flex: 1 },
+
+  destinoText: { fontSize: 15, fontWeight: "700", color: "#000" },
+  cirugiaText: { fontSize: 13, color: "#555", marginTop: 2 },
+  fechaNecesariaText: { fontSize: 13, color: "#666", marginTop: 4 },
+
+  itemsContainer: { marginTop: 8 },
+  itemText: { fontSize: 13, color: "#555" },
+  masText: { fontSize: 12, color: "#888" },
+
+  solicitanteText: { fontSize: 12, color: "#777", marginTop: 8 },
+
+  rightContainer: { alignItems: "flex-end" },
+  fechaText: { fontSize: 12, color: "#666" },
+
+  actionsContainer: { marginTop: 12 },
   row: {
     flexDirection: "row",
-    gap: 10,
+    justifyContent: "space-between",
   },
+
+  // Botones
   btnAceptar: {
     flex: 1,
-    backgroundColor: "#4CAF50",
-    padding: 12,
-    borderRadius: 10,
-    alignItems: "center",
+    backgroundColor: "#00BFA5",
+    padding: 10,
+    borderRadius: 8,
+    marginRight: 6,
   },
   btnRechazar: {
     flex: 1,
-    backgroundColor: "#F44336",
-    padding: 12,
-    borderRadius: 10,
-    alignItems: "center",
+    backgroundColor: "red",
+    padding: 10,
+    borderRadius: 8,
+    marginLeft: 6,
+  },
+  btnConfirmarRechazo: {
+    flex: 1,
+    backgroundColor: "#d9534f",
+    padding: 10,
+    borderRadius: 8,
+    marginRight: 6,
+  },
+  btnUndo: {
+    flex: 1,
+    backgroundColor: "#888",
+    padding: 10,
+    borderRadius: 8,
+    marginLeft: 6,
   },
   btnLista: {
-    backgroundColor: "#00BFA5",
-    padding: 12,
-    borderRadius: 10,
-    alignItems: "center",
+    backgroundColor: "#007bff",
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 8,
   },
   btnOk: {
     flex: 1,
     backgroundColor: "#4CAF50",
-    padding: 12,
-    borderRadius: 10,
-    alignItems: "center",
+    padding: 10,
+    borderRadius: 8,
+    marginRight: 6,
   },
   btnNo: {
     flex: 1,
-    backgroundColor: "#F44336",
-    padding: 12,
-    borderRadius: 10,
-    alignItems: "center",
+    backgroundColor: "#E53935",
+    padding: 10,
+    borderRadius: 8,
+    marginLeft: 6,
   },
-  btnText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 14,
-  },
+
+  btnText: { color: "white", textAlign: "center", fontWeight: "700" },
 });

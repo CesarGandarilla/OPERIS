@@ -70,26 +70,26 @@ export default function SolicitudesScreen() {
     }
   };
 
-  // Escuchar solicitudes
+  // Listener solicitudes
   useEffect(() => {
     const unsub = listenSolicitudes((data) => setSolicitudes(data));
     return () => unsub();
   }, []);
 
-  // CEyE ve todo, los demás solo las suyas
+  // CEyE ve todo
   const solicitudesActivas = solicitudes.filter((s) => {
     if (rol === "ceye") {
       return ["Pendiente", "Aceptada"].includes(s.estado);
     }
 
+    // Enfermería ve solo las suyas
     return (
       s.usuario === usuario &&
-      ["Pendiente", "Aceptada", "Lista", "Problema", "Verificada"].includes(
-        s.estado
-      )
+      ["Pendiente", "Aceptada", "Lista"].includes(s.estado)
     );
   });
 
+  // Ordenar por fecha necesaria o fecha de creación
   const solicitudesOrdenadas = [...solicitudesActivas].sort((a, b) => {
     const da = getDateFromField(a.fechaNecesaria);
     const db = getDateFromField(b.fechaNecesaria);
@@ -102,15 +102,66 @@ export default function SolicitudesScreen() {
   });
 
   // ================================
-  // ACCIONES CEyE
+  // ACCIONES CEYE
   // ================================
-  const aceptar = (id) => updateSolicitud(id, { estado: "Aceptada" });
-  const rechazar = (id) => updateSolicitud(id, { estado: "Rechazada" });
+  const aceptar = (id) =>
+    updateSolicitud(id, { estado: "Aceptada" });
+
+  const rechazar = async (id) => {
+    try {
+      const solicitud = solicitudes.find((s) => s.id === id);
+
+      await updateSolicitud(id, {
+        estadoAnterior: solicitud.estado || "Pendiente",
+        fechaRechazo: Date.now(),
+        rechazoConfirmado: false,
+        estado: "Rechazada",
+      });
+    } catch (e) {
+      console.error("Error al rechazar:", e);
+    }
+  };
+
+  const deshacerRechazo = async (id) => {
+    try {
+      const sol = solicitudes.find((s) => s.id === id);
+
+      if (!sol?.estadoAnterior) {
+        Alert.alert("Error", "No hay estado previo para restaurar.");
+        return;
+      }
+
+      await updateSolicitud(id, {
+        estado: sol.estadoAnterior,
+        estadoAnterior: null,
+        fechaRechazo: null,
+        rechazoConfirmado: false,
+      });
+
+      Alert.alert("Revertido", "Se deshizo el rechazo.");
+    } catch (e) {
+      console.error("Error deshacer rechazo:", e);
+    }
+  };
+
+  const confirmarRechazo = async (id) => {
+    try {
+      await updateSolicitud(id, {
+        rechazoConfirmado: true,
+        estadoAnterior: null,
+        fechaRechazo: null,
+        estado: "Rechazada",
+      });
+
+      Alert.alert("Confirmado", "El rechazo fue confirmado.");
+    } catch (e) {
+      console.error("Error confirmando rechazo:", e);
+    }
+  };
 
   const marcarLista = async (id) => {
     try {
       await updateSolicitud(id, { estado: "Lista" });
-      Alert.alert("Listo", "La solicitud fue marcada como lista.");
     } catch (e) {
       console.error("Error marcar lista:", e);
     }
@@ -121,21 +172,18 @@ export default function SolicitudesScreen() {
   // ================================
   const verificarOk = async (id) => {
     try {
-      const solicitud = solicitudes.find((s) => s.id === id);
+      const sol = solicitudes.find((s) => s.id === id);
 
-      if (solicitud?.items?.length > 0) {
-        const resultado = await descontarStock(solicitud.items);
+      if (sol?.items?.length > 0) {
+        const resultado = await descontarStock(sol.items);
 
         if (!resultado.ok) {
           const fallos = resultado.details
             .filter((d) => d.error)
-            .map((d) => `${d.item?.nombre || "?"}: ${d.error}`)
+            .map((d) => `${d.item?.nombre}: ${d.error}`)
             .join("\n");
 
-          Alert.alert(
-            "Advertencia",
-            `Se verificó, pero algunos items no se actualizaron:\n${fallos}`
-          );
+          Alert.alert("Advertencia", `Algunos items no se actualizaron:\n${fallos}`);
         }
       }
 
@@ -149,6 +197,7 @@ export default function SolicitudesScreen() {
   const verificarNo = (id) =>
     updateSolicitud(id, { estado: "Problema" });
 
+  // Render card
   const renderItem = ({ item }) => (
     <SolicitudCard
       item={item}
@@ -156,6 +205,8 @@ export default function SolicitudesScreen() {
       usuarioActual={usuario}
       onAceptar={aceptar}
       onRechazar={rechazar}
+      onRevertirRechazo={deshacerRechazo}
+      onConfirmarRechazo={confirmarRechazo}
       onMarcarLista={marcarLista}
       onVerificarOk={verificarOk}
       onVerificarNo={verificarNo}
@@ -165,14 +216,14 @@ export default function SolicitudesScreen() {
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
+
+        {/* HEADER */}
         <View style={styles.header}>
           <View>
             <Text style={[styles.title, { color: INK }]}>Solicitudes</Text>
             <Text style={styles.headerSubtitle}>
               {solicitudesOrdenadas.length}{" "}
-              {solicitudesOrdenadas.length === 1
-                ? "solicitud"
-                : "solicitudes"}
+              {solicitudesOrdenadas.length === 1 ? "solicitud" : "solicitudes"}
             </Text>
           </View>
 
@@ -186,15 +237,15 @@ export default function SolicitudesScreen() {
           )}
         </View>
 
+        {/* LISTA */}
         <FlatList
           data={solicitudesOrdenadas}
           renderItem={renderItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          keyExtractor={(i) => i.id}
         />
 
-        {/* MODALES */}
-        <Modal transparent visible={selectorVisible} animationType="fade">
+        {/* MODAL SELECTOR */}
+        <Modal transparent visible={selectorVisible}>
           <View style={styles.selectorOverlay}>
             <View style={styles.selectorBox}>
               <Text style={styles.selectorTitle}>Tipo de solicitud</Text>
@@ -206,9 +257,7 @@ export default function SolicitudesScreen() {
                   setModalElaboradaVisible(true);
                 }}
               >
-                <Text style={styles.selectorBtnText}>
-                  Solicitud elaborada
-                </Text>
+                <Text style={styles.selectorBtnText}>Solicitud elaborada</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -218,9 +267,7 @@ export default function SolicitudesScreen() {
                   setModalRapidaVisible(true);
                 }}
               >
-                <Text style={styles.selectorBtnText}>
-                  Solicitud rápida
-                </Text>
+                <Text style={styles.selectorBtnText}>Solicitud rápida</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -233,6 +280,7 @@ export default function SolicitudesScreen() {
           </View>
         </Modal>
 
+        {/* MODALES */}
         <AgregarSolicitudModal
           visible={modalElaboradaVisible}
           onClose={() => setModalElaboradaVisible(false)}
@@ -254,26 +302,27 @@ export default function SolicitudesScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeContainer: {
-    flex: 1,
-    backgroundColor: "#f8f8f8",
-  },
+  safeContainer: { flex: 1, backgroundColor: "#f8f8f8" },
   container: { flex: 1, padding: 10 },
+
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
     marginBottom: 15,
+    alignItems: "center",
   },
-  title: { fontSize: 26, fontWeight: "800", marginBottom: 12 },
-  headerSubtitle: { fontSize: 14, color: "#888" },
+
+  title: { fontSize: 26, fontWeight: "800" },
+  headerSubtitle: { fontSize: 14, color: "#777" },
+
   btnAgregar: {
     backgroundColor: "#00BFA5",
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
   },
-  btnAgregarText: { color: "#fff", fontWeight: "600" },
+  btnAgregarText: { color: "white", fontWeight: "700" },
+
   selectorOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.3)",
@@ -282,27 +331,23 @@ const styles = StyleSheet.create({
   },
   selectorBox: {
     backgroundColor: "#fff",
-    padding: 20,
-    width: "80%",
+    padding: 25,
     borderRadius: 16,
+    width: "80%",
   },
   selectorTitle: {
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: 12,
     textAlign: "center",
+    marginBottom: 15,
   },
   selectorBtn: {
     backgroundColor: "#00BFA5",
     padding: 12,
     borderRadius: 10,
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  selectorBtnText: {
-    color: "#fff",
-    textAlign: "center",
-    fontWeight: "600",
-  },
-  selectorCancel: { marginTop: 8, padding: 8 },
+  selectorBtnText: { color: "#fff", textAlign: "center", fontWeight: "600" },
+  selectorCancel: { marginTop: 8 },
   selectorCancelText: { textAlign: "center", color: "red" },
 });

@@ -1,31 +1,41 @@
 // src/pantallas/ReportesScreen.js
 import React, { useEffect, useMemo, useState } from "react";
-import EstadoBadge from "../componentes/EstadoBadge"; // ajusta la ruta si es diferente
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
   Dimensions,
   Modal,
+  Alert,
 } from "react-native";
-import { Feather, Ionicons } from "@expo/vector-icons"; // 👈 ya no usamos AntDesign
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { tema } from "../tema";
 import { listenSolicitudes } from "../firebase/firebaseApi";
 import { LUGARES_ENTREGA } from "../constants/lugaresEntrega";
 
+// exportar CSV
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
+
+// componentes nuevos
+import ReportesFiltrosCard from "../componentes/ReportesFiltrosCard";
+import ReportesTopInsumosCard from "../componentes/ReportesTopInsumosCard";
+import ReportesConsumoInsumoCard from "../componentes/ReportesConsumoInsumoCard";
+import ReportesSolicitudesCard from "../componentes/ReportesSolicitudesCard";
+import ReporteDetalleModal from "../componentes/ReporteDetalleModal";
+
 const RANGOS = [
   { id: "7d", label: "Últimos 7 días", dias: 7 },
   { id: "30d", label: "Últimos 30 días", dias: 30 },
-  { id: "todo", label: "Todo", dias: null }, // 👈 "ver todo"
+  { id: "todo", label: "Todo", dias: null },
 ];
 
-const screenWidth = Dimensions.get("window").width; // no se usa ahorita pero no estorba
+const screenWidth = Dimensions.get("window").width;
 
-// helper para quitar acentos y unificar búsqueda
+// helper quitar acentos
 const normalizeText = (str) =>
   (str ?? "")
     .toString()
@@ -33,43 +43,28 @@ const normalizeText = (str) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-// (opcional) helper para estilos de estado si lo usas más adelante
-const getEstadoStyle = (estado) => {
-  const est = estado?.toLowerCase();
-
-  if (est === "lista" || est === "verificada") {
-    return {
-      dot: "#00BFA5",
-      backgroundColor: "rgba(0, 191, 165, 0.15)",
-      color: "#00BFA5",
-    };
+// helper fechas
+const toDate = (valor) => {
+  if (!valor) return null;
+  if (valor instanceof Date) return valor;
+  if (typeof valor?.toDate === "function") return valor.toDate();
+  if (typeof valor === "number") return new Date(valor);
+  if (typeof valor === "string") {
+    const d = new Date(valor);
+    return isNaN(d.getTime()) ? null : d;
   }
-
-  if (est === "aceptada") {
-    return {
-      dot: "#3B82F6",
-      backgroundColor: "rgba(96, 165, 250, 0.18)",
-      color: "#3B82F6",
-    };
+  if (typeof valor === "object" && valor.seconds) {
+    return new Date(valor.seconds * 1000);
   }
-
-  if (est === "rechazada") {
-    return {
-      dot: "#EF4444",
-      backgroundColor: "rgba(239, 68, 68, 0.18)",
-      color: "#EF4444",
-    };
+  if (typeof valor === "object" && valor._seconds) {
+    return new Date(valor._seconds * 1000);
   }
-
-  return {
-    dot: "#6B7280",
-    backgroundColor: "#E5E7EB",
-    color: "#374151",
-  };
+  return null;
 };
 
-const ReportesScreen = ({ navigation }) => {
+const ReportesScreen = () => {
   const [solicitudes, setSolicitudes] = useState([]);
+
   const [filtroRango, setFiltroRango] = useState("7d");
   const [filtroDestino, setFiltroDestino] = useState("todos");
 
@@ -77,9 +72,8 @@ const ReportesScreen = ({ navigation }) => {
   const [insumoSeleccionadoId, setInsumoSeleccionadoId] = useState(null);
 
   const [filtroEstado, setFiltroEstado] = useState("todas");
-  const [busquedaSolicitud, setBusquedaSolicitud] = useState(""); // 🔍 búsqueda de solicitudes
+  const [busquedaSolicitud, setBusquedaSolicitud] = useState("");
 
-  // 🔹 modal de detalle de solicitud
   const [modalVisible, setModalVisible] = useState(false);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState(null);
 
@@ -92,25 +86,7 @@ const ReportesScreen = ({ navigation }) => {
     };
   }, []);
 
-  const toDate = (valor) => {
-    if (!valor) return null;
-    if (valor instanceof Date) return valor;
-    if (typeof valor?.toDate === "function") return valor.toDate();
-    if (typeof valor === "number") return new Date(valor);
-    if (typeof valor === "string") {
-      const d = new Date(valor);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    if (typeof valor === "object" && valor.seconds) {
-      return new Date(valor.seconds * 1000);
-    }
-    if (typeof valor === "object" && valor._seconds) {
-      return new Date(valor._seconds * 1000);
-    }
-    return null;
-  };
-
-  // 🔹 filtro por rango de fechas + destino
+  // ================== FILTRO PRINCIPAL (rango + destino) ==================
   const solicitudesFiltradas = useMemo(() => {
     if (!Array.isArray(solicitudes)) return [];
 
@@ -140,7 +116,7 @@ const ReportesScreen = ({ navigation }) => {
           if (s.destinoId !== filtroDestino) return false;
         } else if (s.destino) {
           const destinoObj = LUGARES_ENTREGA.find(
-            (d) => d.id === filtroDestino // 👈 corregido: antes estaba filtroRango
+            (d) => d.id === filtroDestino
           );
           if (!destinoObj || destinoObj.nombre !== s.destino) return false;
         }
@@ -149,7 +125,7 @@ const ReportesScreen = ({ navigation }) => {
     });
   }, [solicitudes, filtroRango, filtroDestino]);
 
-  // 🔹 top insumos
+  // ================== TOP INSUMOS ==================
   const topInsumos = useMemo(() => {
     const conteo = {};
     solicitudesFiltradas.forEach((s) => {
@@ -171,7 +147,7 @@ const ReportesScreen = ({ navigation }) => {
     return listado.slice(0, 5);
   }, [solicitudesFiltradas]);
 
-  // 🔹 agregados por insumo (para búsqueda de consumo)
+  // ================== AGREGADOS POR INSUMO ==================
   const insumosAggregados = useMemo(() => {
     const mapa = {};
     solicitudesFiltradas.forEach((s) => {
@@ -195,7 +171,6 @@ const ReportesScreen = ({ navigation }) => {
     return mapa;
   }, [solicitudesFiltradas]);
 
-  // 🔹 lista de insumos para el buscador de consumo
   const insumosParaBusqueda = useMemo(() => {
     const lista = Object.values(insumosAggregados);
     if (!insumoBusqueda.trim()) {
@@ -211,7 +186,7 @@ const ReportesScreen = ({ navigation }) => {
       .slice(0, 10);
   }, [insumosAggregados, insumoBusqueda]);
 
-  // 🔹 detalle de insumo seleccionado (consumo)
+  // ================== DETALLE INSUMO ==================
   const insumoSeleccionadoDetalle = useMemo(() => {
     if (!insumoSeleccionadoId) return null;
 
@@ -292,7 +267,7 @@ const ReportesScreen = ({ navigation }) => {
     return valor.toFixed(1);
   };
 
-  // 🔹 filtro de estados SOLO problema, verificada y rechazada + búsqueda
+  // ================== FILTRO POR ESTADO + BÚSQUEDA ==================
   const solicitudesFiltradasPorEstado = useMemo(() => {
     if (!Array.isArray(solicitudesFiltradas)) return [];
 
@@ -359,7 +334,7 @@ const ReportesScreen = ({ navigation }) => {
     });
   }, [solicitudesFiltradas, filtroEstado, busquedaSolicitud]);
 
-  // 🔹 detalle para el modal de solicitud
+  // ================== DETALLE SOLICITUD PARA MODAL ==================
   const solicitudSeleccionadaDetalle = useMemo(() => {
     if (!solicitudSeleccionada) return null;
 
@@ -404,6 +379,112 @@ const ReportesScreen = ({ navigation }) => {
     setSolicitudSeleccionada(null);
   };
 
+  // ================== EXPORTAR CSV ==================
+  const exportarCSV = async () => {
+    try {
+      if (!solicitudesFiltradasPorEstado.length) {
+        Alert.alert(
+          "Sin datos",
+          "No hay solicitudes para exportar con los filtros actuales."
+        );
+        return;
+      }
+
+      // máximo número de insumos en cualquier solicitud
+      const maxInsumos = Math.max(
+        0,
+        ...solicitudesFiltradasPorEstado.map((s) => (s.items || []).length)
+      );
+
+      const headers = [
+        "Fecha de pedido",
+        "Usuario",
+        "Destino",
+        "Cirugia",
+        "Estado",
+      ];
+
+      for (let i = 1; i <= maxInsumos; i++) {
+        headers.push(`Insumo_${i}`);
+        headers.push(`Cantidad_${i}`);
+      }
+
+      const filas = solicitudesFiltradasPorEstado.map((s) => {
+        const fecha = toDate(s.fechaNecesaria ?? s.creadoEn);
+        const fechaStr = fecha
+          ? fecha.toLocaleString("es-MX", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "";
+
+        const destinoNombre =
+          s.destino ||
+          LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
+          "Solicitud rápida";
+
+        const cirugiaTexto =
+          s.cirugia && String(s.cirugia).trim() !== ""
+            ? s.cirugia
+            : "No aplica";
+
+        const base = [
+          fechaStr,
+          s.usuario || "",
+          destinoNombre,
+          cirugiaTexto,
+          s.estado || "",
+        ];
+
+        const row = [...base];
+        const items = s.items || [];
+
+        for (let i = 0; i < maxInsumos; i++) {
+          if (items[i]) {
+            row.push(items[i].nombre || "");
+            row.push(
+              items[i].cantidad === 0 || items[i].cantidad
+                ? items[i].cantidad
+                : ""
+            );
+          } else {
+            row.push("");
+            row.push("");
+          }
+        }
+
+        return row;
+      });
+
+      const escapeCampo = (campo) => {
+        const c = String(campo ?? "").replace(/"/g, '""');
+        return `"${c}"`;
+      };
+
+      const lineas = [
+        headers.map(escapeCampo).join(","),
+        ...filas.map((fila) => fila.map(escapeCampo).join(",")),
+      ];
+
+      const contenido = lineas.join("\n");
+
+      const fileUri =
+        FileSystem.documentDirectory + "reporte_solicitudes.csv";
+
+      await FileSystem.writeAsStringAsync(fileUri, contenido);
+      await Sharing.shareAsync(fileUri);
+    } catch (e) {
+      console.error("Error exportando CSV:", e);
+      Alert.alert(
+        "Error",
+        "Ocurrió un problema al exportar el archivo. Intenta de nuevo."
+      );
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: BG }]}>
       <ScrollView
@@ -416,515 +497,58 @@ const ReportesScreen = ({ navigation }) => {
         </Text>
 
         {/* FILTROS */}
-        <View style={[styles.card, styles.cardElevated]}>
-          <Text style={styles.cardTitle}>Filtros</Text>
-
-          <Text style={styles.filterLabel}>Rango de fechas</Text>
-          <View style={styles.chipRow}>
-            {RANGOS.map((r) => (
-              <TouchableOpacity
-                key={r.id}
-                style={[
-                  styles.chip,
-                  filtroRango === r.id && {
-                    ...styles.chipActive,
-                    backgroundColor: ACCENT,
-                  },
-                ]}
-                onPress={() => setFiltroRango(r.id)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    filtroRango === r.id && styles.chipTextActive,
-                  ]}
-                >
-                  {r.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={[styles.filterLabel, { marginTop: 12 }]}>Destino</Text>
-          <View style={styles.chipRow}>
-            <TouchableOpacity
-              style={[
-                styles.chip,
-                filtroDestino === "todos" && {
-                  ...styles.chipActive,
-                  backgroundColor: ACCENT,
-                },
-              ]}
-              onPress={() => setFiltroDestino("todos")}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  filtroDestino === "todos" && styles.chipTextActive,
-                ]}
-              >
-                Todos
-              </Text>
-            </TouchableOpacity>
-
-            {LUGARES_ENTREGA.map((lugar) => (
-              <TouchableOpacity
-                key={lugar.id}
-                style={[
-                  styles.chip,
-                  filtroDestino === lugar.id && {
-                    ...styles.chipActive,
-                    backgroundColor: ACCENT,
-                  },
-                ]}
-                onPress={() => setFiltroDestino(lugar.id)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    filtroDestino === lugar.id && styles.chipTextActive,
-                  ]}
-                >
-                  {lugar.nombre}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+        <ReportesFiltrosCard
+          filtroRango={filtroRango}
+          setFiltroRango={setFiltroRango}
+          filtroDestino={filtroDestino}
+          setFiltroDestino={setFiltroDestino}
+          RANGOS={RANGOS}
+          LUGARES_ENTREGA={LUGARES_ENTREGA}
+          accentColor={ACCENT}
+        />
 
         {/* TOP INSUMOS */}
-        {topInsumos.length > 0 && (
-          <View style={[styles.card, styles.cardElevated]}>
-            <View style={styles.cardHeaderRow}>
-              <Text style={styles.cardTitle}>Insumos más solicitados</Text>
-              <Text style={styles.cardSubtitle}>Top 5</Text>
-            </View>
-
-            {topInsumos.map((i, idx) => (
-              <View key={i.id} style={styles.rowItem}>
-                <View style={styles.rowLeft}>
-                  <View
-                    style={[styles.indexCircle, { backgroundColor: "#F1F8F7" }]}
-                  >
-                    <Text
-                      style={[styles.indexCircleText, { color: ACCENT }]}
-                    >
-                      {idx + 1}
-                    </Text>
-                  </View>
-                  <Text style={styles.rowTitle}>{i.nombre}</Text>
-                </View>
-                <Text style={[styles.rowBadge, { color: ACCENT }]}>
-                  {i.totalCantidad} unid.
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
+        <ReportesTopInsumosCard topInsumos={topInsumos} accentColor={ACCENT} />
 
         {/* CONSUMO POR INSUMO */}
-        <View style={[styles.card, styles.cardElevated]}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>Consumo por insumo</Text>
-            <Feather name="search" size={18} color="#6B7280" />
-          </View>
+        <ReportesConsumoInsumoCard
+          insumoBusqueda={insumoBusqueda}
+          setInsumoBusqueda={setInsumoBusqueda}
+          insumoSeleccionadoId={insumoSeleccionadoId}
+          setInsumoSeleccionadoId={setInsumoSeleccionadoId}
+          insumosParaBusqueda={insumosParaBusqueda}
+          insumoSeleccionadoDetalle={insumoSeleccionadoDetalle}
+          formatearFechaCorta={formatearFechaCorta}
+          formatearPromedio={formatearPromedio}
+          accentColor={ACCENT}
+        />
 
-          <Text style={styles.helperText}>
-            Busca un insumo para ver su consumo en el periodo filtrado
-            {filtroDestino !== "todos" ? " para este destino." : "."}
-          </Text>
-
-          {/* BUSCADOR */}
-          <View style={[styles.searchRow, { backgroundColor: "#F6F9F8" }]}>
-            <Feather name="search" size={16} color="#9CA3AF" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Escribe el nombre del insumo"
-              placeholderTextColor="#9CA3AF"
-              value={insumoBusqueda}
-              onChangeText={(texto) => {
-                setInsumoBusqueda(texto);
-                if (!texto) setInsumoSeleccionadoId(null);
-              }}
-              selectionColor={ACCENT}
-            />
-
-            {insumoBusqueda.length > 0 && (
-              <TouchableOpacity
-                onPress={() => {
-                  setInsumoBusqueda("");
-                  setInsumoSeleccionadoId(null);
-                }}
-              >
-                <Ionicons
-                  name="close-circle-outline"
-                  size={18}
-                  color="#9CA3AF"
-                />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* LISTA DE INSUMOS - CON SCROLL */}
-          {insumosParaBusqueda.length > 0 && (
-            <View style={styles.insumosListaContainer}>
-              <ScrollView
-                style={styles.insumosScroll}
-                nestedScrollEnabled
-                showsVerticalScrollIndicator={true}
-              >
-                {insumosParaBusqueda.map((i) => {
-                  const isSelected = insumoSeleccionadoId === i.id;
-
-                  return (
-                    <TouchableOpacity
-                      key={i.id}
-                      style={[
-                        styles.insumoChip,
-                        isSelected && styles.insumoChipActive,
-                      ]}
-                      onPress={() => {
-                        if (isSelected) {
-                          setInsumoSeleccionadoId(null);
-                          setInsumoBusqueda("");
-                        } else {
-                          setInsumoSeleccionadoId(i.id);
-                          setInsumoBusqueda(i.nombre);
-                        }
-                      }}
-                    >
-                      <View
-                        style={{ flexDirection: "row", alignItems: "center" }}
-                      >
-                        <View
-                          style={{
-                            width: 26,
-                            height: 26,
-                            borderRadius: 13,
-                            backgroundColor: "#E0F2F1",
-                            justifyContent: "center",
-                            alignItems: "center",
-                            marginRight: 10,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              fontWeight: "700",
-                              color: "#00BFA5",
-                            }}
-                          >
-                            {i.totalCantidad}
-                          </Text>
-                        </View>
-
-                        <Text
-                          style={[
-                            styles.insumoChipText,
-                            isSelected && styles.insumoChipTextActive,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {i.nombre}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
-
-          {/* DETALLES DEL INSUMO */}
-          {insumoSeleccionadoId && insumoSeleccionadoDetalle && (
-            <View style={styles.consumoCard}>
-              <Text style={styles.consumoTitle}>
-                {insumoBusqueda || "Insumo seleccionado"}
-              </Text>
-
-              <View style={styles.consumoRow}>
-                <Text style={styles.consumoLabel}>Total solicitado:</Text>
-                <Text style={styles.consumoValue}>
-                  {insumoSeleccionadoDetalle.totalCantidad} unidades
-                </Text>
-              </View>
-
-              <View style={styles.consumoRow}>
-                <Text style={styles.consumoLabel}>Número de solicitudes:</Text>
-                <Text style={styles.consumoValue}>
-                  {insumoSeleccionadoDetalle.totalSolicitudes}
-                </Text>
-              </View>
-
-              <View style={styles.consumoRow}>
-                <Text style={styles.consumoLabel}>Promedio por día:</Text>
-                <Text style={styles.consumoValue}>
-                  {formatearPromedio(
-                    insumoSeleccionadoDetalle.promedioPorDia
-                  )}
-                </Text>
-              </View>
-
-              <View style={styles.consumoRow}>
-                <Text style={styles.consumoLabel}>Última solicitud:</Text>
-                <Text style={styles.consumoValue}>
-                  {formatearFechaCorta(
-                    insumoSeleccionadoDetalle.fechaUltima
-                  )}
-                </Text>
-              </View>
-
-              {insumoSeleccionadoDetalle.destinos.length > 0 && (
-                <>
-                  <Text style={[styles.consumoLabel, { marginTop: 8 }]}>
-                    Destinos que más lo solicitan:
-                  </Text>
-
-                  {insumoSeleccionadoDetalle.destinos
-                    .slice(0, 3)
-                    .map((d, idx) => (
-                      <Text key={idx} style={styles.consumoDestinoItem}>
-                        • {d.nombre} ({d.count} solicitudes)
-                      </Text>
-                    ))}
-                </>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* SOLICITUDES FILTRADAS */}
-        <View style={[styles.card, styles.cardElevated]}>
-          <Text style={styles.cardTitle}>Solicitudes filtradas</Text>
-          <Text style={styles.cardSubtitleSmall}>
-            {solicitudesFiltradasPorEstado.length} solicitudes en el periodo
-            elegido
-          </Text>
-
-          {/* BUSCADOR DE SOLICITUDES */}
-          <View
-            style={[
-              styles.searchRow,
-              { backgroundColor: "#F6F9F8", marginTop: 6, marginBottom: 8 },
-            ]}
-          >
-            <Feather name="search" size={16} color="#9CA3AF" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Buscar por usuario, insumo, destino, cirugía o fecha"
-              placeholderTextColor="#9CA3AF"
-              value={busquedaSolicitud}
-              onChangeText={setBusquedaSolicitud}
-              selectionColor={ACCENT}
-            />
-            {busquedaSolicitud.length > 0 && (
-              <TouchableOpacity onPress={() => setBusquedaSolicitud("")}>
-                <Ionicons
-                  name="close-circle-outline"
-                  size={18}
-                  color="#9CA3AF"
-                />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* CHIPS ESTADO */}
-          <View style={[styles.chipRow, { marginTop: 4 }]}>
-            {[
-              { id: "todas", label: "Todas" },
-              { id: "completadas", label: "Completadas" },
-              { id: "rechazadas", label: "Rechazadas" },
-            ].map((op) => (
-              <TouchableOpacity
-                key={op.id}
-                style={[
-                  styles.chip,
-                  filtroEstado === op.id && {
-                    ...styles.chipActive,
-                    backgroundColor: ACCENT,
-                  },
-                ]}
-                onPress={() => setFiltroEstado(op.id)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    filtroEstado === op.id && styles.chipTextActive,
-                  ]}
-                >
-                  {op.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* LISTA DE SOLICITUDES */}
-          {solicitudesFiltradasPorEstado.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No se encontraron solicitudes con los filtros actuales.
-            </Text>
-          ) : (
-            solicitudesFiltradasPorEstado.map((s) => {
-              const fecha = toDate(s.fechaNecesaria ?? s.creadoEn);
-              const fechaTexto = fecha
-                ? `${fecha.toLocaleDateString("es-MX", {
-                    day: "2-digit",
-                    month: "short",
-                  })} · ${fecha.toLocaleTimeString("es-MX", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}`
-                : "Sin fecha";
-
-              const destinoNombre =
-                s.destino ||
-                LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
-                "Solicitud rápida";
-
-              const items = s.items || [];
-
-              return (
-                <TouchableOpacity
-                  key={s.id}
-                  style={styles.solicitudItem}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    setSolicitudSeleccionada(s);
-                    setModalVisible(true);
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.solicitudFecha}>{fechaTexto}</Text>
-                    <Text style={styles.solicitudDestino}>
-                      {destinoNombre}
-                    </Text>
-
-                    <Text style={styles.solicitudUsuario}>
-                      Solicitó: {s.usuario || "Desconocido"}
-                    </Text>
-
-                    {/* todos los insumos */}
-                    {items.length > 0 ? (
-                      items.map((item, idx) => (
-                        <Text key={idx} style={styles.solicitudInsumo}>
-                          • {item.nombre || "Insumo"} × {item.cantidad ?? 0}
-                        </Text>
-                      ))
-                    ) : (
-                      <Text style={styles.solicitudInsumo}>Sin insumos</Text>
-                    )}
-
-                    {s.cirugia ? (
-                      <Text style={styles.solicitudCirugia}>
-                        Cirugía: {s.cirugia}
-                      </Text>
-                    ) : null}
-
-                    <View style={{ marginTop: 4 }}>
-                      <EstadoBadge estado={s.estado} />
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </View>
+        {/* SOLICITUDES FILTRADAS + EXPORT */}
+        <ReportesSolicitudesCard
+          solicitudesFiltradasPorEstado={solicitudesFiltradasPorEstado}
+          busquedaSolicitud={busquedaSolicitud}
+          setBusquedaSolicitud={setBusquedaSolicitud}
+          filtroEstado={filtroEstado}
+          setFiltroEstado={setFiltroEstado}
+          accentColor={ACCENT}
+          onExportCSV={exportarCSV}
+          onSelectSolicitud={(s) => {
+            setSolicitudSeleccionada(s);
+            setModalVisible(true);
+          }}
+          toDate={toDate}
+          LUGARES_ENTREGA={LUGARES_ENTREGA}
+        />
 
         <View style={{ height: 24 }} />
       </ScrollView>
 
-      {/* MODAL DETALLE DE SOLICITUD */}
-      <Modal
+      {/* MODAL DETALLE */}
+      <ReporteDetalleModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={cerrarModal}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Detalle de solicitud</Text>
-              <TouchableOpacity onPress={cerrarModal}>
-                <Ionicons name="close" size={22} color="#4B5563" />
-              </TouchableOpacity>
-            </View>
-
-            {solicitudSeleccionadaDetalle && (
-              <ScrollView
-                style={{ maxHeight: 400 }}
-                showsVerticalScrollIndicator={true}
-              >
-                <Text style={styles.modalLabel}>
-                  Fecha y hora:
-                  <Text style={styles.modalValue}>
-                    {" "}
-                    {solicitudSeleccionadaDetalle.fechaTexto}
-                  </Text>
-                </Text>
-
-                <Text style={styles.modalLabel}>
-                  Destino:
-                  <Text style={styles.modalValue}>
-                    {" "}
-                    {solicitudSeleccionadaDetalle.destinoNombre}
-                  </Text>
-                </Text>
-
-                <Text style={styles.modalLabel}>
-                  Usuario:
-                  <Text style={styles.modalValue}>
-                    {" "}
-                    {solicitudSeleccionadaDetalle.usuario}
-                  </Text>
-                </Text>
-
-                {solicitudSeleccionadaDetalle.cirugia && (
-                  <Text style={styles.modalLabel}>
-                    Cirugía:
-                    <Text style={styles.modalValue}>
-                      {" "}
-                      {solicitudSeleccionadaDetalle.cirugia}
-                    </Text>
-                  </Text>
-                )}
-
-                <Text style={[styles.modalSectionTitle, { marginTop: 12 }]}>
-                  Insumos solicitados
-                </Text>
-
-                {solicitudSeleccionadaDetalle.items.length > 0 ? (
-                  solicitudSeleccionadaDetalle.items.map((item, idx) => (
-                    <View key={idx} style={styles.modalItemRow}>
-                      <Text style={styles.modalItemName}>
-                        • {item.nombre || "Insumo"}
-                      </Text>
-                      <Text style={styles.modalItemQty}>
-                        × {item.cantidad ?? 0}
-                      </Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.modalValue}>Sin insumos</Text>
-                )}
-
-                <View style={{ marginTop: 16 }}>
-                  <Text style={styles.modalLabel}>
-                    Estado:
-                    <Text style={styles.modalValue}>
-                      {" "}
-                      {solicitudSeleccionadaDetalle.estado || "-"}
-                    </Text>
-                  </Text>
-                </View>
-              </ScrollView>
-            )}
-
-            <TouchableOpacity style={styles.modalCloseButton} onPress={cerrarModal}>
-              <Text style={styles.modalCloseButtonText}>Cerrar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        onClose={cerrarModal}
+        solicitudSeleccionadaDetalle={solicitudSeleccionadaDetalle}
+      />
     </SafeAreaView>
   );
 };
@@ -944,315 +568,5 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: "800",
     marginBottom: 12,
-  },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
-  },
-  cardElevated: {
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  cardHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  cardSubtitle: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  cardSubtitleSmall: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginBottom: 8,
-  },
-  filterLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-    marginTop: 4,
-    marginBottom: 6,
-  },
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
-  },
-  chipActive: {},
-  chipText: {
-    fontSize: 13,
-    color: "#374151",
-  },
-  chipTextActive: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  rowItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 8,
-    alignItems: "center",
-  },
-  rowLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  indexCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-  indexCircleText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  rowTitle: {
-    fontSize: 14,
-    color: "#111827",
-    flexShrink: 1,
-  },
-  rowBadge: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  helperText: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginBottom: 8,
-  },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 8,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: "#111827",
-    paddingVertical: 0,
-  },
-  insumosListaContainer: {
-    marginTop: 6,
-    borderRadius: 12,
-    backgroundColor: "#FAFBFC",
-    paddingVertical: 6,
-    paddingHorizontal: 6,
-  },
-  // 👇 altura limitada para que se vean ~3 ítems y luego haya scroll
-  insumosScroll: {
-    maxHeight: 140,
-  },
-  insumoChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-  },
-  insumoChipActive: {},
-  insumoChipText: {
-    fontSize: 13,
-    color: "#111827",
-  },
-  insumoChipTextActive: {
-    fontWeight: "700",
-    color: "#00695C",
-  },
-  consumoCard: {
-    marginTop: 12,
-    borderRadius: 12,
-    backgroundColor: "#F7F8F9",
-    padding: 12,
-  },
-  consumoTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    marginBottom: 8,
-    color: "#111827",
-  },
-  consumoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  consumoLabel: {
-    fontSize: 13,
-    color: "#4B5563",
-  },
-  consumoValue: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  consumoDestinoItem: {
-    fontSize: 13,
-    color: "#374151",
-  },
-  emptyText: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: 8,
-  },
-  solicitudItem: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderColor: "#EEF2F5",
-  },
-  solicitudFecha: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  solicitudDestino: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  solicitudUsuario: {
-    fontSize: 13,
-    color: "#4B5563",
-    marginTop: 2,
-  },
-  solicitudInsumo: {
-    fontSize: 13,
-    color: "#4B5563",
-    marginTop: 2,
-  },
-  solicitudCirugia: {
-    fontSize: 13,
-    color: "#4B5563",
-    marginTop: 2,
-  },
-  solicitudEstado: {
-    fontWeight: "700",
-    color: "#111827",
-  },
-  estadoBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    overflow: "hidden",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  chart: {
-    marginVertical: 10,
-    borderRadius: 14,
-  },
-  legendContainer: {
-    marginTop: 8,
-    alignItems: "flex-start",
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  legendColorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 10,
-  },
-  legendText: {
-    fontSize: 13,
-    color: "#374151",
-  },
-
-  // 🔹 estilos modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 18,
-  },
-  modalCard: {
-    width: "100%",
-    maxHeight: "80%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 16,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  modalLabel: {
-    fontSize: 13,
-    color: "#4B5563",
-    marginTop: 4,
-  },
-  modalValue: {
-    fontSize: 13,
-    color: "#111827",
-    fontWeight: "500",
-  },
-  modalSectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#111827",
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  modalItemRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 2,
-  },
-  modalItemName: {
-    fontSize: 13,
-    color: "#374151",
-    flex: 1,
-    paddingRight: 8,
-  },
-  modalItemQty: {
-    fontSize: 13,
-    color: "#111827",
-    fontWeight: "600",
-  },
-  modalCloseButton: {
-    marginTop: 10,
-    borderRadius: 999,
-    backgroundColor: "#111827",
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  modalCloseButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "600",
   },
 });

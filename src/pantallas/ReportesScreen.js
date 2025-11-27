@@ -10,9 +10,9 @@ import {
   TouchableOpacity,
   TextInput,
   Dimensions,
+  Modal,
 } from "react-native";
-import { AntDesign, Feather } from "@expo/vector-icons";
-import { PieChart } from "react-native-chart-kit";
+import { Feather, Ionicons } from "@expo/vector-icons"; // 👈 ya no usamos AntDesign
 import { tema } from "../tema";
 import { listenSolicitudes } from "../firebase/firebaseApi";
 import { LUGARES_ENTREGA } from "../constants/lugaresEntrega";
@@ -23,9 +23,7 @@ const RANGOS = [
   { id: "todo", label: "Todo", dias: null }, // 👈 "ver todo"
 ];
 
-const screenWidth = Dimensions.get("window").width;
-
-const PIE_COLORS = ["#00BFA5", "#60A5FA", "#F59E0B", "#EF4444", "#6B7280"];
+const screenWidth = Dimensions.get("window").width; // no se usa ahorita pero no estorba
 
 // helper para quitar acentos y unificar búsqueda
 const normalizeText = (str) =>
@@ -80,6 +78,10 @@ const ReportesScreen = ({ navigation }) => {
 
   const [filtroEstado, setFiltroEstado] = useState("todas");
   const [busquedaSolicitud, setBusquedaSolicitud] = useState(""); // 🔍 búsqueda de solicitudes
+
+  // 🔹 modal de detalle de solicitud
+  const [modalVisible, setModalVisible] = useState(false);
+  const [solicitudSeleccionada, setSolicitudSeleccionada] = useState(null);
 
   useEffect(() => {
     const unsub = listenSolicitudes((lista) => {
@@ -137,36 +139,15 @@ const ReportesScreen = ({ navigation }) => {
         if (s.destinoId) {
           if (s.destinoId !== filtroDestino) return false;
         } else if (s.destino) {
-          const destinoObj = LUGARES_ENTREGA.find((d) => d.id === filtroDestino);
+          const destinoObj = LUGARES_ENTREGA.find(
+            (d) => d.id === filtroDestino // 👈 corregido: antes estaba filtroRango
+          );
           if (!destinoObj || destinoObj.nombre !== s.destino) return false;
         }
       }
       return true;
     });
   }, [solicitudes, filtroRango, filtroDestino]);
-
-  // 🔹 destinos top
-  const topDestinos = useMemo(() => {
-    if (filtroDestino !== "todos") return [];
-    const conteo = {};
-
-    solicitudesFiltradas.forEach((s) => {
-      const id = s.destinoId || s.destino || "sin-destino";
-      const nombre =
-        s.destino ||
-        LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
-        "Sin destino";
-
-      if (!conteo[id]) {
-        conteo[id] = { id, nombre, count: 0 };
-      }
-      conteo[id].count += 1;
-    });
-
-    const listado = Object.values(conteo);
-    listado.sort((a, b) => b.count - a.count);
-    return listado.slice(0, 5);
-  }, [solicitudesFiltradas, filtroDestino]);
 
   // 🔹 top insumos
   const topInsumos = useMemo(() => {
@@ -214,7 +195,7 @@ const ReportesScreen = ({ navigation }) => {
     return mapa;
   }, [solicitudesFiltradas]);
 
-  // 🔹 lista de insumos para el buscador de consumo (ahora sin acentos)
+  // 🔹 lista de insumos para el buscador de consumo
   const insumosParaBusqueda = useMemo(() => {
     const lista = Object.values(insumosAggregados);
     if (!insumoBusqueda.trim()) {
@@ -261,7 +242,7 @@ const ReportesScreen = ({ navigation }) => {
       const destinoNombre =
         s.destino ||
         LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
-        "Sin destino";
+        "Solicitud rápida";
 
       if (!destinosConteo[destinoNombre]) {
         destinosConteo[destinoNombre] = 0;
@@ -311,7 +292,7 @@ const ReportesScreen = ({ navigation }) => {
     return valor.toFixed(1);
   };
 
-  // 🔹 filtro de estados SOLO problema, verificada y rechazada + búsqueda (sin acentos)
+  // 🔹 filtro de estados SOLO problema, verificada y rechazada + búsqueda
   const solicitudesFiltradasPorEstado = useMemo(() => {
     if (!Array.isArray(solicitudesFiltradas)) return [];
 
@@ -320,7 +301,6 @@ const ReportesScreen = ({ navigation }) => {
     return solicitudesFiltradas.filter((s) => {
       const estado = (s.estado || "").toLowerCase();
 
-      // excluir siempre pedidos aún en flujo
       if (
         estado === "pendiente" ||
         estado === "lista" ||
@@ -329,7 +309,6 @@ const ReportesScreen = ({ navigation }) => {
         return false;
       }
 
-      // filtro por estado
       let pasaEstado = false;
       if (filtroEstado === "todas") {
         pasaEstado =
@@ -344,7 +323,6 @@ const ReportesScreen = ({ navigation }) => {
 
       if (!pasaEstado) return false;
 
-      // si no hay texto de búsqueda, ya pasó
       if (!texto) return true;
 
       const usuarioStr = normalizeText(s.usuario);
@@ -381,21 +359,50 @@ const ReportesScreen = ({ navigation }) => {
     });
   }, [solicitudesFiltradas, filtroEstado, busquedaSolicitud]);
 
-  const pieDataDestinos = useMemo(() => {
-    if (!topDestinos || topDestinos.length === 0) return [];
+  // 🔹 detalle para el modal de solicitud
+  const solicitudSeleccionadaDetalle = useMemo(() => {
+    if (!solicitudSeleccionada) return null;
 
-    return topDestinos.map((d, idx) => ({
-      name: d.nombre || "Sin destino",
-      count: d.count,
-      color: PIE_COLORS[idx % PIE_COLORS.length],
-      legendFontColor: "#374151",
-      legendFontSize: 12,
-    }));
-  }, [topDestinos]);
+    const fecha = toDate(
+      solicitudSeleccionada.fechaNecesaria ?? solicitudSeleccionada.creadoEn
+    );
+    const fechaTexto = fecha
+      ? `${fecha.toLocaleDateString("es-MX", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })} · ${fecha.toLocaleTimeString("es-MX", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`
+      : "Sin fecha";
+
+    const destinoNombre =
+      solicitudSeleccionada.destino ||
+      LUGARES_ENTREGA.find((d) => d.id === solicitudSeleccionada.destinoId)
+        ?.nombre ||
+      "Solicitud rápida";
+
+    const items = solicitudSeleccionada.items || [];
+
+    return {
+      fechaTexto,
+      destinoNombre,
+      items,
+      usuario: solicitudSeleccionada.usuario || "Desconocido",
+      cirugia: solicitudSeleccionada.cirugia || null,
+      estado: solicitudSeleccionada.estado || "",
+    };
+  }, [solicitudSeleccionada]);
 
   const ACCENT = tema?.colores?.accent || "#00BFA5";
   const BG = tema?.colores?.bg || "#F7F8FA";
   const INK = tema?.colores?.ink || "#111827";
+
+  const cerrarModal = () => {
+    setModalVisible(false);
+    setSolicitudSeleccionada(null);
+  };
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: BG }]}>
@@ -485,53 +492,6 @@ const ReportesScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Destinos TOP */}
-        {filtroDestino === "todos" && topDestinos.length > 0 && (
-          <View style={[styles.card, styles.cardElevated]}>
-            <View style={styles.cardHeaderRow}>
-              <Text style={styles.cardTitle}>Destinos con más solicitudes</Text>
-              <Text style={styles.cardSubtitle}>Top 5</Text>
-            </View>
-
-            {pieDataDestinos.length > 0 && (
-              <PieChart
-                data={pieDataDestinos}
-                width={screenWidth - 32}
-                height={220}
-                accessor="count"
-                backgroundColor="transparent"
-                paddingLeft="10"
-                chartConfig={{
-                  backgroundGradientFrom: "#FFFFFF",
-                  backgroundGradientTo: "#FFFFFF",
-                  color: () => ACCENT,
-                  labelColor: () => "#374151",
-                }}
-                absolute
-                hasLegend={false}
-                style={styles.chart}
-              />
-            )}
-
-            <View style={styles.legendContainer}>
-              {pieDataDestinos.map((d, idx) => (
-                <View key={idx} style={styles.legendItem}>
-                  <View
-                    style={[
-                      styles.legendColorDot,
-                      { backgroundColor: d.color },
-                    ]}
-                  />
-                  <Text style={styles.legendText}>
-                    {d.name} ·{" "}
-                    <Text style={{ fontWeight: "700" }}>{d.count}</Text>
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
         {/* TOP INSUMOS */}
         {topInsumos.length > 0 && (
           <View style={[styles.card, styles.cardElevated]}>
@@ -576,7 +536,7 @@ const ReportesScreen = ({ navigation }) => {
 
           {/* BUSCADOR */}
           <View style={[styles.searchRow, { backgroundColor: "#F6F9F8" }]}>
-            <AntDesign name="search" size={16} color="#9CA3AF" />
+            <Feather name="search" size={16} color="#9CA3AF" />
             <TextInput
               style={styles.searchInput}
               placeholder="Escribe el nombre del insumo"
@@ -596,70 +556,82 @@ const ReportesScreen = ({ navigation }) => {
                   setInsumoSeleccionadoId(null);
                 }}
               >
-                <AntDesign name="closecircleo" size={16} color="#9CA3AF" />
+                <Ionicons
+                  name="close-circle-outline"
+                  size={18}
+                  color="#9CA3AF"
+                />
               </TouchableOpacity>
             )}
           </View>
 
-          {/* LISTA DE INSUMOS */}
+          {/* LISTA DE INSUMOS - CON SCROLL */}
           {insumosParaBusqueda.length > 0 && (
             <View style={styles.insumosListaContainer}>
-              {insumosParaBusqueda.map((i) => {
-                const isSelected = insumoSeleccionadoId === i.id;
+              <ScrollView
+                style={styles.insumosScroll}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={true}
+              >
+                {insumosParaBusqueda.map((i) => {
+                  const isSelected = insumoSeleccionadoId === i.id;
 
-                return (
-                  <TouchableOpacity
-                    key={i.id}
-                    style={[
-                      styles.insumoChip,
-                      isSelected && styles.insumoChipActive,
-                    ]}
-                    onPress={() => {
-                      if (isSelected) {
-                        setInsumoSeleccionadoId(null);
-                        setInsumoBusqueda("");
-                      } else {
-                        setInsumoSeleccionadoId(i.id);
-                        setInsumoBusqueda(i.nombre);
-                      }
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  return (
+                    <TouchableOpacity
+                      key={i.id}
+                      style={[
+                        styles.insumoChip,
+                        isSelected && styles.insumoChipActive,
+                      ]}
+                      onPress={() => {
+                        if (isSelected) {
+                          setInsumoSeleccionadoId(null);
+                          setInsumoBusqueda("");
+                        } else {
+                          setInsumoSeleccionadoId(i.id);
+                          setInsumoBusqueda(i.nombre);
+                        }
+                      }}
+                    >
                       <View
-                        style={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 13,
-                          backgroundColor: "#E0F2F1",
-                          justifyContent: "center",
-                          alignItems: "center",
-                          marginRight: 10,
-                        }}
+                        style={{ flexDirection: "row", alignItems: "center" }}
                       >
-                        <Text
+                        <View
                           style={{
-                            fontSize: 13,
-                            fontWeight: "700",
-                            color: "#00BFA5",
+                            width: 26,
+                            height: 26,
+                            borderRadius: 13,
+                            backgroundColor: "#E0F2F1",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            marginRight: 10,
                           }}
                         >
-                          {i.totalCantidad}
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: "700",
+                              color: "#00BFA5",
+                            }}
+                          >
+                            {i.totalCantidad}
+                          </Text>
+                        </View>
+
+                        <Text
+                          style={[
+                            styles.insumoChipText,
+                            isSelected && styles.insumoChipTextActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {i.nombre}
                         </Text>
                       </View>
-
-                      <Text
-                        style={[
-                          styles.insumoChipText,
-                          isSelected && styles.insumoChipTextActive,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {i.nombre}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
           )}
 
@@ -736,7 +708,7 @@ const ReportesScreen = ({ navigation }) => {
               { backgroundColor: "#F6F9F8", marginTop: 6, marginBottom: 8 },
             ]}
           >
-            <AntDesign name="search" size={16} color="#9CA3AF" />
+            <Feather name="search" size={16} color="#9CA3AF" />
             <TextInput
               style={styles.searchInput}
               placeholder="Buscar por usuario, insumo, destino, cirugía o fecha"
@@ -747,7 +719,11 @@ const ReportesScreen = ({ navigation }) => {
             />
             {busquedaSolicitud.length > 0 && (
               <TouchableOpacity onPress={() => setBusquedaSolicitud("")}>
-                <AntDesign name="closecircleo" size={16} color="#9CA3AF" />
+                <Ionicons
+                  name="close-circle-outline"
+                  size={18}
+                  color="#9CA3AF"
+                />
               </TouchableOpacity>
             )}
           </View>
@@ -782,7 +758,7 @@ const ReportesScreen = ({ navigation }) => {
             ))}
           </View>
 
-          {/* SI NO HAY SOLICITUDES */}
+          {/* LISTA DE SOLICITUDES */}
           {solicitudesFiltradasPorEstado.length === 0 ? (
             <Text style={styles.emptyText}>
               No se encontraron solicitudes con los filtros actuales.
@@ -803,40 +779,41 @@ const ReportesScreen = ({ navigation }) => {
               const destinoNombre =
                 s.destino ||
                 LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
-                "Sin destino";
+                "Solicitud rápida";
 
               const items = s.items || [];
-              const numItems = items.length;
-              const primerItem = items[0];
-              const textoPrimerItem = primerItem
-                ? `• ${primerItem.nombre || "Insumo"} × ${
-                    primerItem.cantidad ?? 0
-                  }`
-                : "Sin insumos";
-
-              const extraItems =
-                numItems > 1 ? ` · +${numItems - 1} insumo(s) más` : "";
 
               return (
-                <View key={s.id} style={styles.solicitudItem}>
+                <TouchableOpacity
+                  key={s.id}
+                  style={styles.solicitudItem}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSolicitudSeleccionada(s);
+                    setModalVisible(true);
+                  }}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.solicitudFecha}>{fechaTexto}</Text>
                     <Text style={styles.solicitudDestino}>
                       {destinoNombre}
                     </Text>
 
-                    {/* usuario */}
                     <Text style={styles.solicitudUsuario}>
                       Solicitó: {s.usuario || "Desconocido"}
                     </Text>
 
-                    {/* insumos */}
-                    <Text style={styles.solicitudInsumo}>
-                      {textoPrimerItem}
-                      {extraItems}
-                    </Text>
+                    {/* todos los insumos */}
+                    {items.length > 0 ? (
+                      items.map((item, idx) => (
+                        <Text key={idx} style={styles.solicitudInsumo}>
+                          • {item.nombre || "Insumo"} × {item.cantidad ?? 0}
+                        </Text>
+                      ))
+                    ) : (
+                      <Text style={styles.solicitudInsumo}>Sin insumos</Text>
+                    )}
 
-                    {/* cirugía, solo si existe y aplica (elaboradas) */}
                     {s.cirugia ? (
                       <Text style={styles.solicitudCirugia}>
                         Cirugía: {s.cirugia}
@@ -847,7 +824,7 @@ const ReportesScreen = ({ navigation }) => {
                       <EstadoBadge estado={s.estado} />
                     </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })
           )}
@@ -855,6 +832,99 @@ const ReportesScreen = ({ navigation }) => {
 
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      {/* MODAL DETALLE DE SOLICITUD */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={cerrarModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Detalle de solicitud</Text>
+              <TouchableOpacity onPress={cerrarModal}>
+                <Ionicons name="close" size={22} color="#4B5563" />
+              </TouchableOpacity>
+            </View>
+
+            {solicitudSeleccionadaDetalle && (
+              <ScrollView
+                style={{ maxHeight: 400 }}
+                showsVerticalScrollIndicator={true}
+              >
+                <Text style={styles.modalLabel}>
+                  Fecha y hora:
+                  <Text style={styles.modalValue}>
+                    {" "}
+                    {solicitudSeleccionadaDetalle.fechaTexto}
+                  </Text>
+                </Text>
+
+                <Text style={styles.modalLabel}>
+                  Destino:
+                  <Text style={styles.modalValue}>
+                    {" "}
+                    {solicitudSeleccionadaDetalle.destinoNombre}
+                  </Text>
+                </Text>
+
+                <Text style={styles.modalLabel}>
+                  Usuario:
+                  <Text style={styles.modalValue}>
+                    {" "}
+                    {solicitudSeleccionadaDetalle.usuario}
+                  </Text>
+                </Text>
+
+                {solicitudSeleccionadaDetalle.cirugia && (
+                  <Text style={styles.modalLabel}>
+                    Cirugía:
+                    <Text style={styles.modalValue}>
+                      {" "}
+                      {solicitudSeleccionadaDetalle.cirugia}
+                    </Text>
+                  </Text>
+                )}
+
+                <Text style={[styles.modalSectionTitle, { marginTop: 12 }]}>
+                  Insumos solicitados
+                </Text>
+
+                {solicitudSeleccionadaDetalle.items.length > 0 ? (
+                  solicitudSeleccionadaDetalle.items.map((item, idx) => (
+                    <View key={idx} style={styles.modalItemRow}>
+                      <Text style={styles.modalItemName}>
+                        • {item.nombre || "Insumo"}
+                      </Text>
+                      <Text style={styles.modalItemQty}>
+                        × {item.cantidad ?? 0}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.modalValue}>Sin insumos</Text>
+                )}
+
+                <View style={{ marginTop: 16 }}>
+                  <Text style={styles.modalLabel}>
+                    Estado:
+                    <Text style={styles.modalValue}>
+                      {" "}
+                      {solicitudSeleccionadaDetalle.estado || "-"}
+                    </Text>
+                  </Text>
+                </View>
+              </ScrollView>
+            )}
+
+            <TouchableOpacity style={styles.modalCloseButton} onPress={cerrarModal}>
+              <Text style={styles.modalCloseButtonText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -996,6 +1066,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 6,
   },
+  // 👇 altura limitada para que se vean ~3 ítems y luego haya scroll
+  insumosScroll: {
+    maxHeight: 140,
+  },
   insumoChip: {
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -1108,5 +1182,77 @@ const styles = StyleSheet.create({
   legendText: {
     fontSize: 13,
     color: "#374151",
+  },
+
+  // 🔹 estilos modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 18,
+  },
+  modalCard: {
+    width: "100%",
+    maxHeight: "80%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 16,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  modalLabel: {
+    fontSize: 13,
+    color: "#4B5563",
+    marginTop: 4,
+  },
+  modalValue: {
+    fontSize: 13,
+    color: "#111827",
+    fontWeight: "500",
+  },
+  modalSectionTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  modalItemRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  modalItemName: {
+    fontSize: 13,
+    color: "#374151",
+    flex: 1,
+    paddingRight: 8,
+  },
+  modalItemQty: {
+    fontSize: 13,
+    color: "#111827",
+    fontWeight: "600",
+  },
+  modalCloseButton: {
+    marginTop: 10,
+    borderRadius: 999,
+    backgroundColor: "#111827",
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  modalCloseButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

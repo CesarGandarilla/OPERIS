@@ -214,7 +214,7 @@ export default function PanelDeControlScreen({ navigation }) {
                 }
               />
 
-              {/* SOLICITUDES PARA HOY (GLOBAL) */}
+              {/* 👇 AQUÍ EL CAMBIO: antes "Solicitudes hoy" con solicitudesParaHoyGlobal */}
               <StatCard
                 icon={
                   <AntDesign
@@ -224,9 +224,9 @@ export default function PanelDeControlScreen({ navigation }) {
                   />
                 }
                 iconBackgroundColor="#E7F7F6"
-                titulo="Solicitudes hoy"
-                valor={solicitudesParaHoyGlobal.toString()}
-                subtitulo="por preparar hoy"
+                titulo="Solicitudes pendientes"
+                valor={solicitudesPendientesGlobal.toString()}
+                subtitulo="por atender"
                 onPress={() => navigation.navigate("Solicitudes")}
               />
             </View>

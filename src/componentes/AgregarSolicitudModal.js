@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+// AgregarSolicitudModal.js
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -17,9 +18,10 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
 
-// ⬅️ IMPORTAMOS LISTAS EXTERNAS
+//  IMPORTAMOS LISTAS EXTERNAS
 import { LUGARES_ENTREGA } from "../constants/lugaresEntrega";
 import { CIRUGIAS } from "../constants/cirugias";
+import { kits } from "../constants/kits";
 
 const MAX_CANTIDAD_POR_ITEM = 100;
 
@@ -29,47 +31,47 @@ export default function AgregarSolicitudModal({
   usuario,
   rol,
   onEnviar,
+  itemsIniciales = null,
+  kitSeleccionado = null,
 }) {
+  // Datos de inventario
   const [insumos, setInsumos] = useState([]);
-  const [seleccion, setSeleccion] = useState([]);
+  // Form
+  const [seleccion, setSeleccion] = useState([]); // [{ insumoId|null, nombre, cantidad }]
   const [cantidad, setCantidad] = useState("");
   const [insumoSeleccionado, setInsumoSeleccionado] = useState(null);
-
   const [busqueda, setBusqueda] = useState("");
-
-  // Paso 1 = insumos, 2 = datos
+  // pasos
   const [paso, setPaso] = useState(1);
-
-  // Fecha/hora
+  // fecha / hora
   const [fechaNecesaria, setFechaNecesaria] = useState(null);
   const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
   const [isTimePickerVisible, setTimePickerVisibility] = useState(false);
-
-  // Destino
+  // destino
   const [lugarEntrega, setLugarEntrega] = useState(null);
-  const [destinoBusqueda, setDestinoBusqueda] = useState(""); // solo para mostrar el nombre elegido
-
-  // Cirugía
+  const [destinoBusqueda, setDestinoBusqueda] = useState("");
+  // cirugia
   const [cirugia, setCirugia] = useState("");
-
+  // mensajes / errores / UI
   const [errores, setErrores] = useState({
     cantidad: "",
     fecha: "",
     destino: "",
     cirugia: "",
   });
-
   const [mensajeInsumo, setMensajeInsumo] = useState("");
-
   const [mostrarResultadosInsumos, setMostrarResultadosInsumos] =
     useState(false);
   const [mostrarResultadosCirugia, setMostrarResultadosCirugia] =
     useState(false);
 
+  // Cargar insumos desde Firestore (una vez)
   useEffect(() => {
+    let mounted = true;
     const cargarInsumos = async () => {
       try {
         const snap = await getDocs(collection(db, "insumos"));
+        if (!mounted) return;
         setInsumos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (error) {
         console.error("Error cargando insumos", error);
@@ -77,9 +79,46 @@ export default function AgregarSolicitudModal({
       }
     };
     cargarInsumos();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // Filtrar insumos
+  // Mapeos útiles: nombre -> insumo (buscar por igualdad en minúsculas)
+  const insumoPorNombre = useMemo(() => {
+    const map = new Map();
+    insumos.forEach((i) => {
+      if (i.nombre) map.set(i.nombre.trim().toLowerCase(), i);
+    });
+    return map;
+  }, [insumos]);
+
+  // Cuando se abre el modal y vienen items iniciales / kit -> precargar selección
+  useEffect(() => {
+    if (!visible) return;
+    const inicial = kitSeleccionado?.items || itemsIniciales || null;
+    if (inicial && Array.isArray(inicial)) {
+      // Mapear: si existe nombre en inventario, traer su id; si no, dejar null.
+      const itemsMapeados = inicial.map((it) => {
+        const nombre = (it.nombre || "").trim();
+        const encontrado = insumoPorNombre.get(nombre.toLowerCase());
+        return {
+          insumoId: encontrado?.id || null,
+          nombre,
+          cantidad: Number(it.cantidad) || 0,
+        };
+      });
+      setSeleccion(itemsMapeados);
+      setPaso(1);
+      setMensajeInsumo(
+        itemsMapeados.length ? "Kit cargado en la selección." : ""
+      );
+    }
+    // Si no hay iniciales, no tocamos la selección
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, kitSeleccionado, itemsIniciales, insumoPorNombre]);
+
+  // Filtrado dinámico de insumos por búsqueda
   const insumosFiltrados =
     busqueda.trim() === ""
       ? []
@@ -87,7 +126,7 @@ export default function AgregarSolicitudModal({
           i.nombre?.toLowerCase().includes(busqueda.toLowerCase())
         );
 
-  // Filtrar cirugías (desde el archivo de constantes)
+  // Filtrar cirugías (constante)
   const cirugiasFiltradas =
     cirugia.trim() === ""
       ? []
@@ -95,6 +134,7 @@ export default function AgregarSolicitudModal({
           c.nombre.toLowerCase().includes(cirugia.toLowerCase())
         );
 
+  // Reset completo del formulario
   const resetFormulario = () => {
     setSeleccion([]);
     setCantidad("");
@@ -107,24 +147,24 @@ export default function AgregarSolicitudModal({
     setDatePickerVisibility(false);
     setTimePickerVisibility(false);
     setPaso(1);
-
     setErrores({
       cantidad: "",
       fecha: "",
       destino: "",
       cirugia: "",
     });
-
     setMensajeInsumo("");
     setMostrarResultadosInsumos(false);
     setMostrarResultadosCirugia(false);
   };
 
+  // Handle cerrar
   const handleCerrar = () => {
     resetFormulario();
     onClose();
   };
 
+  // Agregar item a seleccion (mantiene lógica original, pero robusta)
   const agregarItem = () => {
     setErrores((prev) => ({ ...prev, cantidad: "" }));
     setMensajeInsumo("");
@@ -140,24 +180,20 @@ export default function AgregarSolicitudModal({
     const cantidadNumero = parseInt(cantidad, 10);
 
     if (isNaN(cantidadNumero) || cantidadNumero <= 0) {
-      setErrores((prev) => ({
-        ...prev,
-        cantidad: "La cantidad debe ser mayor a cero.",
-      }));
+      setErrores((prev) => ({ ...prev, cantidad: "La cantidad debe ser mayor a cero." }));
       return;
     }
 
     if (cantidadNumero > MAX_CANTIDAD_POR_ITEM) {
-      setErrores((prev) => ({
-        ...prev,
-        cantidad: `Máximo permitido: ${MAX_CANTIDAD_POR_ITEM}.`,
-      }));
+      setErrores((prev) => ({ ...prev, cantidad: `Máximo permitido: ${MAX_CANTIDAD_POR_ITEM}.` }));
       return;
     }
 
     setSeleccion((prev) => {
       const idx = prev.findIndex(
-        (p) => p.insumoId === insumoSeleccionado.id
+        (p) =>
+          (p.insumoId && p.insumoId === insumoSeleccionado.id) ||
+          (p.insumoId == null && p.nombre === insumoSeleccionado.nombre)
       );
 
       if (idx !== -1) {
@@ -179,14 +215,14 @@ export default function AgregarSolicitudModal({
       return [
         ...prev,
         {
-          insumoId: insumoSeleccionado.id,
+          insumoId: insumoSeleccionado.id || null,
           nombre: insumoSeleccionado.nombre,
           cantidad: cantidadNumero,
         },
       ];
     });
 
-    // limpiar cantidad, selección y búsqueda al agregar
+    // limpiar campos
     setCantidad("");
     setInsumoSeleccionado(null);
     setBusqueda("");
@@ -199,6 +235,7 @@ export default function AgregarSolicitudModal({
     setMensajeInsumo("");
   };
 
+  // Date/time handlers
   const showDatePicker = () => setDatePickerVisibility(true);
   const hideDatePicker = () => setDatePickerVisibility(false);
 
@@ -232,6 +269,7 @@ export default function AgregarSolicitudModal({
       .replace("p. m.", "PM")}`;
   };
 
+  // Validación y envío (preserva tu payload original)
   const enviarSolicitud = () => {
     let huboError = false;
     const nuevosErrores = {
@@ -241,23 +279,13 @@ export default function AgregarSolicitudModal({
       cirugia: "",
     };
 
-    // Validar fecha (permite elegir cualquiera en el calendario,
-    // pero aquí checamos el rango mañana–30 días)
     if (!fechaNecesaria) {
       nuevosErrores.fecha = "Selecciona fecha y hora.";
       huboError = true;
     } else {
       const hoy = new Date();
-      const manana = new Date(
-        hoy.getFullYear(),
-        hoy.getMonth(),
-        hoy.getDate() + 1
-      );
-      const maxDate = new Date(
-        hoy.getFullYear(),
-        hoy.getMonth(),
-        hoy.getDate() + 30
-      );
+      const manana = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1);
+      const maxDate = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 30);
 
       const fechaSolo = new Date(
         fechaNecesaria.getFullYear(),
@@ -266,8 +294,7 @@ export default function AgregarSolicitudModal({
       );
 
       if (fechaSolo < manana || fechaSolo > maxDate) {
-        nuevosErrores.fecha =
-          "La fecha debe ser desde mañana y máximo en 30 días.";
+        nuevosErrores.fecha = "La fecha debe ser desde mañana y máximo en 30 días.";
         huboError = true;
       }
     }
@@ -277,7 +304,6 @@ export default function AgregarSolicitudModal({
       huboError = true;
     }
 
-    // 🔹 Cirugía OBLIGATORIA
     if (!cirugia.trim()) {
       nuevosErrores.cirugia = "Describe la cirugía o procedimiento.";
       huboError = true;
@@ -312,16 +338,34 @@ export default function AgregarSolicitudModal({
 
   const irASiguientePaso = () => {
     if (seleccion.length === 0) {
-      Alert.alert(
-        "Faltan insumos",
-        "Agrega al menos un insumo para continuar."
-      );
+      Alert.alert("Faltan insumos", "Agrega al menos un insumo para continuar.");
       return;
     }
     setPaso(2);
   };
 
   const irAPasoAnterior = () => setPaso(1);
+
+  // Subcomponent: lista de insumos añadidos (render)
+  const RenderSeleccion = () => (
+    <View style={styles.smallListContainer}>
+      <ScrollView>
+        {seleccion.map((item, index) => (
+          <View key={index} style={styles.previewItem}>
+            <Text>{item.nombre} × {item.cantidad}</Text>
+            <TouchableOpacity onPress={() => eliminarSeleccion(index)}>
+              <Text style={styles.removeText}>Eliminar</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        {seleccion.length === 0 && (
+          <View style={styles.item}>
+            <Text>Aún no has añadido insumos.</Text>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -345,7 +389,7 @@ export default function AgregarSolicitudModal({
                 </View>
               </View>
 
-              {/* Banner insumo añadido */}
+              {/* Banner */}
               {paso === 1 && !!mensajeInsumo && !errores.cantidad && (
                 <View style={styles.successBox}>
                   <Text style={styles.successText}>✓ {mensajeInsumo}</Text>
@@ -355,18 +399,16 @@ export default function AgregarSolicitudModal({
               <ScrollView keyboardShouldPersistTaps="handled">
                 {paso === 1 && (
                   <>
-                    <Text style={styles.sectionTitle}>
-                      1. Selecciona los insumos
-                    </Text>
+                    <Text style={styles.sectionTitle}>1. Selecciona los insumos</Text>
 
-                    {/* BUSCAR INSUMO */}
+                    {/* Buscar insumo */}
                     <Text style={styles.label}>Buscar insumo</Text>
                     <TextInput
                       placeholder="Escribe para buscar"
                       value={busqueda}
                       onChangeText={(text) => {
                         setBusqueda(text);
-                        setInsumoSeleccionado(null); // invalida la selección
+                        setInsumoSeleccionado(null);
                         setMensajeInsumo("");
                         setMostrarResultadosInsumos(text.trim() !== "");
                       }}
@@ -375,38 +417,53 @@ export default function AgregarSolicitudModal({
                       color="#000"
                     />
 
-                    {mostrarResultadosInsumos &&
-                      busqueda.trim() !== "" && (
-                        <View style={styles.smallListContainer}>
-                          <ScrollView keyboardShouldPersistTaps="handled">
-                            {insumosFiltrados.length === 0 ? (
-                              <View style={styles.item}>
-                                <Text>No se encontraron insumos</Text>
-                              </View>
-                            ) : (
-                              insumosFiltrados.map((item) => (
-                                <TouchableOpacity
-                                  key={item.id}
-                                  style={[
-                                    styles.item,
-                                    insumoSeleccionado?.id === item.id &&
-                                      styles.itemSelected,
-                                  ]}
-                                  onPress={() => {
-                                    setInsumoSeleccionado(item);
-                                    setBusqueda(item.nombre);
-                                    setMostrarResultadosInsumos(false);
-                                  }}
-                                >
-                                  <Text>{item.nombre}</Text>
-                                </TouchableOpacity>
-                              ))
-                            )}
-                          </ScrollView>
-                        </View>
-                      )}
+                    {/* Resultados */}
+                    {mostrarResultadosInsumos && busqueda.trim() !== "" && (
+                      <View style={styles.smallListContainer}>
+                        <ScrollView keyboardShouldPersistTaps="handled">
+                          {insumosFiltrados.length === 0 ? (
+                            <View style={styles.item}>
+                              <Text>No se encontraron insumos</Text>
+                              {/* Permitir crear item "libre" usando el texto de búsqueda */}
+                              <TouchableOpacity
+                                style={{ padding: 8 }}
+                                onPress={() => {
+                                  const nombreLibre = busqueda.trim();
+                                  if (!nombreLibre) return;
+                                  const fake = { id: null, nombre: nombreLibre };
+                                  setInsumoSeleccionado(fake);
+                                  setBusqueda(nombreLibre);
+                                  setMostrarResultadosInsumos(false);
+                                }}
+                              >
+                                <Text style={{ color: "#00695C" }}>
+                                  Usar "{busqueda.trim()}"
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : (
+                            insumosFiltrados.map((item) => (
+                              <TouchableOpacity
+                                key={item.id}
+                                style={[
+                                  styles.item,
+                                  insumoSeleccionado?.id === item.id && styles.itemSelected,
+                                ]}
+                                onPress={() => {
+                                  setInsumoSeleccionado(item);
+                                  setBusqueda(item.nombre);
+                                  setMostrarResultadosInsumos(false);
+                                }}
+                              >
+                                <Text>{item.nombre}</Text>
+                              </TouchableOpacity>
+                            ))
+                          )}
+                        </ScrollView>
+                      </View>
+                    )}
 
-                    {/* CANTIDAD */}
+                    {/* Cantidad */}
                     <Text style={styles.label}>Cantidad</Text>
                     <TextInput
                       style={styles.input}
@@ -424,93 +481,45 @@ export default function AgregarSolicitudModal({
                     />
                     <View style={styles.errorContainer}>
                       {!!errores.cantidad && (
-                        <Text
-                          style={styles.errorText}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
-                        >
+                        <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">
                           {errores.cantidad}
                         </Text>
                       )}
                     </View>
 
-                    <TouchableOpacity
-                      style={styles.addButton}
-                      onPress={agregarItem}
-                    >
+                    <TouchableOpacity style={styles.addButton} onPress={agregarItem}>
                       <Text style={styles.addButtonText}>Agregar insumo</Text>
                     </TouchableOpacity>
 
-                    {/* LISTA DE INSUMOS AÑADIDOS */}
-                    <Text style={[styles.label, { marginTop: 10 }]}>
-                      Insumos añadidos
-                    </Text>
-                    <View style={styles.smallListContainer}>
-                      <ScrollView>
-                        {seleccion.map((item, index) => (
-                          <View key={index} style={styles.previewItem}>
-                            <Text>
-                              {item.nombre} × {item.cantidad}
-                            </Text>
-                            <TouchableOpacity
-                              onPress={() => eliminarSeleccion(index)}
-                            >
-                              <Text style={styles.removeText}>Eliminar</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ))}
-                        {seleccion.length === 0 && (
-                          <View style={styles.item}>
-                            <Text>Aún no has añadido insumos.</Text>
-                          </View>
-                        )}
-                      </ScrollView>
-                    </View>
+                    <Text style={[styles.label, { marginTop: 10 }]}>Insumos añadidos</Text>
+                    <RenderSeleccion />
                   </>
                 )}
 
                 {paso === 2 && (
                   <>
-                    <Text style={styles.sectionTitle}>
-                      2. Datos de la solicitud
-                    </Text>
+                    <Text style={styles.sectionTitle}>2. Datos de la solicitud</Text>
 
-                    {/* FECHA Y HORA */}
+                    {/* Fecha y hora */}
                     <Text style={styles.label}>Fecha y hora</Text>
                     <View style={styles.rowInline}>
-                      <TouchableOpacity
-                        style={styles.selectorButton}
-                        onPress={showDatePicker}
-                      >
-                        <Text style={styles.selectorText}>
-                          Seleccionar fecha
-                        </Text>
+                      <TouchableOpacity style={styles.selectorButton} onPress={showDatePicker}>
+                        <Text style={styles.selectorText}>Seleccionar fecha</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.selectorButton}
-                        onPress={showTimePicker}
-                      >
-                        <Text style={styles.selectorText}>
-                          Seleccionar hora
-                        </Text>
+                      <TouchableOpacity style={styles.selectorButton} onPress={showTimePicker}>
+                        <Text style={styles.selectorText}>Seleccionar hora</Text>
                       </TouchableOpacity>
                     </View>
-                    <Text style={styles.selectedDateText}>
-                      {mostrarTextoFechaHora()}
-                    </Text>
+                    <Text style={styles.selectedDateText}>{mostrarTextoFechaHora()}</Text>
                     <View style={styles.errorContainer}>
                       {!!errores.fecha && (
-                        <Text
-                          style={styles.errorText}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
-                        >
+                        <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">
                           {errores.fecha}
                         </Text>
                       )}
                     </View>
 
-                    {/* DESTINO – SOLO LISTA */}
+                    {/* Destino */}
                     <Text style={styles.label}>Destino</Text>
                     <View style={styles.destinosContainer}>
                       {LUGARES_ENTREGA.map((lugar) => (
@@ -518,8 +527,7 @@ export default function AgregarSolicitudModal({
                           key={lugar.id}
                           style={[
                             styles.destinoPill,
-                            lugarEntrega === lugar.id &&
-                              styles.destinoPillSelected,
+                            lugarEntrega === lugar.id && styles.destinoPillSelected,
                           ]}
                           onPress={() => {
                             setLugarEntrega(lugar.id);
@@ -530,8 +538,7 @@ export default function AgregarSolicitudModal({
                           <Text
                             style={[
                               styles.destinoPillText,
-                              lugarEntrega === lugar.id &&
-                                styles.destinoPillTextSelected,
+                              lugarEntrega === lugar.id && styles.destinoPillTextSelected,
                             ]}
                           >
                             {lugar.nombre}
@@ -540,23 +547,17 @@ export default function AgregarSolicitudModal({
                       ))}
                     </View>
                     <Text style={styles.destinoSeleccionadoText}>
-                      {lugarEntrega
-                        ? `Destino seleccionado: ${destinoBusqueda}`
-                        : "Ningún destino seleccionado"}
+                      {lugarEntrega ? `Destino seleccionado: ${destinoBusqueda}` : "Ningún destino seleccionado"}
                     </Text>
                     <View style={styles.errorContainer}>
                       {!!errores.destino && (
-                        <Text
-                          style={styles.errorText}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
-                        >
+                        <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">
                           {errores.destino}
                         </Text>
                       )}
                     </View>
 
-                    {/* CIRUGÍA – OBLIGATORIA */}
+                    {/* Cirugía */}
                     <Text style={styles.label}>Cirugía / procedimiento</Text>
                     <TextInput
                       placeholder="Ej. Colecistectomía laparoscópica"
@@ -572,46 +573,41 @@ export default function AgregarSolicitudModal({
                     />
                     <View style={styles.errorContainer}>
                       {!!errores.cirugia && (
-                        <Text
-                          style={styles.errorText}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
-                        >
+                        <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">
                           {errores.cirugia}
                         </Text>
                       )}
                     </View>
 
-                    {mostrarResultadosCirugia &&
-                      cirugia.trim() !== "" && (
-                        <View style={styles.smallListContainer}>
-                          <ScrollView>
-                            {cirugiasFiltradas.length === 0 ? (
-                              <View style={styles.item}>
-                                <Text>No hay coincidencias</Text>
-                              </View>
-                            ) : (
-                              cirugiasFiltradas.map((c) => (
-                                <TouchableOpacity
-                                  key={c.id}
-                                  style={styles.item}
-                                  onPress={() => {
-                                    setCirugia(c.nombre);
-                                    setMostrarResultadosCirugia(false);
-                                  }}
-                                >
-                                  <Text>{c.nombre}</Text>
-                                </TouchableOpacity>
-                              ))
-                            )}
-                          </ScrollView>
-                        </View>
-                      )}
+                    {mostrarResultadosCirugia && cirugia.trim() !== "" && (
+                      <View style={styles.smallListContainer}>
+                        <ScrollView>
+                          {cirugiasFiltradas.length === 0 ? (
+                            <View style={styles.item}>
+                              <Text>No hay coincidencias</Text>
+                            </View>
+                          ) : (
+                            cirugiasFiltradas.map((c) => (
+                              <TouchableOpacity
+                                key={c.id}
+                                style={styles.item}
+                                onPress={() => {
+                                  setCirugia(c.nombre);
+                                  setMostrarResultadosCirugia(false);
+                                }}
+                              >
+                                <Text>{c.nombre}</Text>
+                              </TouchableOpacity>
+                            ))
+                          )}
+                        </ScrollView>
+                      </View>
+                    )}
                   </>
                 )}
               </ScrollView>
 
-              {/* DatePicker – sin min/max, solo se valida después */}
+              {/* DatePickers */}
               <DateTimePickerModal
                 isVisible={isDatePickerVisible}
                 mode="date"
@@ -620,8 +616,6 @@ export default function AgregarSolicitudModal({
                 textColor="#000"
                 isDarkModeEnabled={false}
               />
-
-              {/* TimePicker */}
               <DateTimePickerModal
                 isVisible={isTimePickerVisible}
                 mode="time"
@@ -631,23 +625,17 @@ export default function AgregarSolicitudModal({
                 isDarkModeEnabled={false}
               />
 
-              {/* Botones paso */}
+              {/* Navegación */}
               <View style={styles.navRow}>
                 {paso === 2 && (
-                  <TouchableOpacity
-                    style={[styles.navButton, styles.navBackButton]}
-                    onPress={irAPasoAnterior}
-                  >
+                  <TouchableOpacity style={[styles.navButton, styles.navBackButton]} onPress={irAPasoAnterior}>
                     <Text style={styles.navBackButtonText}>← Atrás</Text>
                   </TouchableOpacity>
                 )}
 
                 {paso === 1 && (
                   <TouchableOpacity
-                    style={[
-                      styles.navButton,
-                      seleccion.length === 0 && styles.navButtonDisabled,
-                    ]}
+                    style={[styles.navButton, seleccion.length === 0 && styles.navButtonDisabled]}
                     disabled={seleccion.length === 0}
                     onPress={irASiguientePaso}
                   >
@@ -656,10 +644,7 @@ export default function AgregarSolicitudModal({
                 )}
 
                 {paso === 2 && (
-                  <TouchableOpacity
-                    style={styles.navButton}
-                    onPress={enviarSolicitud}
-                  >
+                  <TouchableOpacity style={styles.navButton} onPress={enviarSolicitud}>
                     <Text style={styles.navButtonText}>Enviar solicitud</Text>
                   </TouchableOpacity>
                 )}
@@ -676,13 +661,15 @@ export default function AgregarSolicitudModal({
   );
 }
 
+/* ===========================
+   ESTILOS (preservados con mejoras)
+   =========================== */
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     width: "100%",
     justifyContent: "center",
     alignItems: "center",
-    // 👇 sombreado sobre la pantalla de atrás
     backgroundColor: "rgba(0,0,0,0.4)",
   },
   modalContainer: {
@@ -774,13 +761,14 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   addButtonText: { color: "#fff", fontWeight: "bold" },
-  rowInline: { flexDirection: "row", gap: 10 },
+  rowInline: { flexDirection: "row" },
   selectorButton: {
     flex: 1,
     backgroundColor: "#E0F2F1",
     borderRadius: 12,
     padding: 10,
     alignItems: "center",
+    marginRight: 8,
   },
   selectorText: {
     color: "#00695C",
@@ -840,7 +828,6 @@ const styles = StyleSheet.create({
   destinosContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
     marginTop: 4,
   },
   destinoPill: {
@@ -850,6 +837,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#B0BEC5",
     backgroundColor: "#FFFFFF",
+    marginRight: 8,
+    marginBottom: 6,
   },
   destinoPillSelected: {
     backgroundColor: "#00BFA5",

@@ -1,7 +1,7 @@
 export const kits = [
   {
     id: "kit-apendicectomia",
-    nombre: "Apendicectomía",
+    nombre: "Kit Apendicectomía",
     items: [
       { nombre: "Sutura Seda/Silk calibre 2-0", cantidad: 2 },
       { nombre: "Sutura catgut calibre 2-0", cantidad: 1 },
@@ -12,7 +12,7 @@ export const kits = [
   },
   {
     id: "kit-cesarea",
-    nombre: "Cesárea",
+    nombre: "Kit Cesárea",
     items: [
       { nombre: "Sutura Vicryl calibre 1", cantidad: 3 },
       { nombre: "Sutura Catgut calibre 0", cantidad: 2 },
@@ -22,7 +22,7 @@ export const kits = [
   },
   {
     id: "kit-hernioplastia",
-    nombre: "Hernioplastía",
+    nombre: "Kit Hernioplastía",
     items: [
       { nombre: "Malla polipropileno 10 x 15 cm", cantidad: 1 },
       { nombre: "Sutura Prolene calibre 2-0", cantidad: 2 },
@@ -32,7 +32,7 @@ export const kits = [
   },
   {
     id: "kit-colecistectomia",
-    nombre: "Colecistectomía",
+    nombre: "Kit Colecistectomía",
     items: [
       { nombre: "Sutura vicryl calibre 2-0", cantidad: 2 },
       { nombre: "Sutura seda calibre 3-0", cantidad: 2 },
@@ -42,7 +42,7 @@ export const kits = [
   },
   {
     id: "kit-circuncision",
-    nombre: "Circuncisión",
+    nombre: "Kit Circuncisión",
     items: [
       { nombre: "Sutura Catgut calibre 2-0", cantidad: 2 },
       { nombre: "Gasas estériles", cantidad: 6 },
@@ -51,7 +51,7 @@ export const kits = [
   },
   {
     id: "kit-laceracion",
-    nombre: "Reparación de laceración",
+    nombre: "Kit Reparación de laceración",
     items: [
       { nombre: "Sutura nylon calibre 4-0", cantidad: 2 },
       { nombre: "Jeringa 5 mL", cantidad: 1 },

@@ -10,11 +10,16 @@ import {
   Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { tema } from "../tema";
 import { descontarStock } from "../firebase/descontarStock";
+
 import AgregarSolicitudModal from "../componentes/AgregarSolicitudModal";
 import AgregarSolicitudRapidaModal from "../componentes/AgregarSolicitudRapidaModal";
 import SolicitudCard from "../componentes/SolicitudCard";
+import KitCard from "../componentes/KitCard";
+
+import { kits } from "../constants/kits";
 
 import {
   listenSolicitudes,
@@ -35,6 +40,8 @@ export default function SolicitudesScreen() {
   const [modalRapidaVisible, setModalRapidaVisible] = useState(false);
   const [selectorVisible, setSelectorVisible] = useState(false);
 
+  const [kitSeleccionado, setKitSeleccionado] = useState(null);
+
   const INK = tema?.colores?.ink || "#111827";
 
   // Crear solicitud elaborada
@@ -51,6 +58,7 @@ export default function SolicitudesScreen() {
 
       Alert.alert("Solicitud creada", "Tu solicitud elaborada se envió.");
       setModalElaboradaVisible(false);
+      setKitSeleccionado(null);
     } catch (error) {
       console.error("Error creando solicitud elaborada", error);
       Alert.alert("Error", "No se pudo crear la solicitud.");
@@ -61,7 +69,6 @@ export default function SolicitudesScreen() {
   const crearSolicitudRapida = async (solicitud) => {
     try {
       await createSolicitud(solicitud);
-
       Alert.alert("Solicitud rápida enviada");
       setModalRapidaVisible(false);
     } catch (error) {
@@ -70,7 +77,7 @@ export default function SolicitudesScreen() {
     }
   };
 
-  // Listener solicitudes
+  // Listener
   useEffect(() => {
     const unsub = listenSolicitudes((data) => setSolicitudes(data));
     return () => unsub();
@@ -81,15 +88,13 @@ export default function SolicitudesScreen() {
     if (rol === "ceye") {
       return ["Pendiente", "Aceptada"].includes(s.estado);
     }
-
-    // Enfermería ve solo las suyas
     return (
       s.usuario === usuario &&
       ["Pendiente", "Aceptada", "Lista"].includes(s.estado)
     );
   });
 
-  // Ordenar por fecha necesaria o fecha de creación
+  // Ordenar
   const solicitudesOrdenadas = [...solicitudesActivas].sort((a, b) => {
     const da = getDateFromField(a.fechaNecesaria);
     const db = getDateFromField(b.fechaNecesaria);
@@ -101,16 +106,12 @@ export default function SolicitudesScreen() {
     return (b.creadoEn || 0) - (a.creadoEn || 0);
   });
 
-  // ================================
-  // ACCIONES CEYE
-  // ================================
-  const aceptar = (id) =>
-    updateSolicitud(id, { estado: "Aceptada" });
+  // Acciones CEyE
+  const aceptar = (id) => updateSolicitud(id, { estado: "Aceptada" });
 
   const rechazar = async (id) => {
     try {
       const solicitud = solicitudes.find((s) => s.id === id);
-
       await updateSolicitud(id, {
         estadoAnterior: solicitud.estado || "Pendiente",
         fechaRechazo: Date.now(),
@@ -125,20 +126,16 @@ export default function SolicitudesScreen() {
   const deshacerRechazo = async (id) => {
     try {
       const sol = solicitudes.find((s) => s.id === id);
-
       if (!sol?.estadoAnterior) {
         Alert.alert("Error", "No hay estado previo para restaurar.");
         return;
       }
-
       await updateSolicitud(id, {
         estado: sol.estadoAnterior,
         estadoAnterior: null,
         fechaRechazo: null,
         rechazoConfirmado: false,
       });
-
-      Alert.alert("Revertido", "Se deshizo el rechazo.");
     } catch (e) {
       console.error("Error deshacer rechazo:", e);
     }
@@ -152,8 +149,6 @@ export default function SolicitudesScreen() {
         fechaRechazo: null,
         estado: "Rechazada",
       });
-
-      Alert.alert("Confirmado", "El rechazo fue confirmado.");
     } catch (e) {
       console.error("Error confirmando rechazo:", e);
     }
@@ -167,9 +162,7 @@ export default function SolicitudesScreen() {
     }
   };
 
-  // ================================
-  // ACCIONES ENFERMERÍA
-  // ================================
+  // Enfermería
   const verificarOk = async (id) => {
     try {
       const sol = solicitudes.find((s) => s.id === id);
@@ -194,10 +187,16 @@ export default function SolicitudesScreen() {
     }
   };
 
-  const verificarNo = (id) =>
-    updateSolicitud(id, { estado: "Problema" });
+  const verificarNo = (id) => updateSolicitud(id, { estado: "Problema" });
 
-  // Render card
+  // ===============================
+  // Selección de kits
+  // ===============================
+  const handleSelectKit = (kit) => {
+    setKitSeleccionado(kit);
+    setModalElaboradaVisible(true);
+  };
+
   const renderItem = ({ item }) => (
     <SolicitudCard
       item={item}
@@ -216,7 +215,6 @@ export default function SolicitudesScreen() {
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
-
         {/* HEADER */}
         <View style={styles.header}>
           <View>
@@ -237,14 +235,32 @@ export default function SolicitudesScreen() {
           )}
         </View>
 
+        {/* KITS */}
+          {rol !== "ceye" && (
+            <View style={{ height: 130, marginBottom: 10 }}>
+              <FlatList
+                data={kits}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(k) => k.id}
+                contentContainerStyle={{ paddingBottom: 10 }}
+                renderItem={({ item }) => (
+                  <KitCard kit={item} onPress={() => handleSelectKit(item)} />
+                )}
+              />
+            </View>
+          )}
+
         {/* LISTA */}
         <FlatList
           data={solicitudesOrdenadas}
           renderItem={renderItem}
           keyExtractor={(i) => i.id}
+          style={{ flex: 1 , marginTop: 10 }}
+          contentContainerStyle={{ paddingBottom: 40 }}
         />
 
-        {/* MODAL SELECTOR */}
+        {/* SELECTOR */}
         <Modal transparent visible={selectorVisible}>
           <View style={styles.selectorOverlay}>
             <View style={styles.selectorBox}>
@@ -283,10 +299,14 @@ export default function SolicitudesScreen() {
         {/* MODALES */}
         <AgregarSolicitudModal
           visible={modalElaboradaVisible}
-          onClose={() => setModalElaboradaVisible(false)}
+          onClose={() => {
+            setModalElaboradaVisible(false);
+            setKitSeleccionado(null);
+          }}
           usuario={usuario}
           rol={rol}
           onEnviar={crearSolicitud}
+          itemsIniciales={kitSeleccionado?.items || null}
         />
 
         <AgregarSolicitudRapidaModal

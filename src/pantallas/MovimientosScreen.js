@@ -8,6 +8,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRoute } from "@react-navigation/native";   // 👈 nuevo
 import { useAuth } from "../auth/AuthContext";
 import { listenSolicitudes } from "../firebase/firebaseApi";
 import { getDateFromField, formatFechaNecesaria } from "../utils/fechaUtils";
@@ -38,14 +39,23 @@ const getColor = (estado) => {
 };
 
 export default function MovimientosScreen() {
+  const route = useRoute();
   const { user } = useAuth();
   const usuario = user?.profile?.email;
   const rol = user?.profile?.role?.toLowerCase();
 
+  // 👇 leemos el estado inicial que viene del panel (ej. "Problema", "Verificada")
+  const estadoInicial = route.params?.estadoInicial || "Todos";
+
   const [solicitudes, setSolicitudes] = useState([]);
-  const [filtro, setFiltro] = useState("Todos");
+  const [filtro, setFiltro] = useState(estadoInicial);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // si cambian los params (por ejemplo, vienes del panel con otro estado) actualizamos el filtro
+  useEffect(() => {
+    setFiltro(estadoInicial);
+  }, [estadoInicial]);
 
   // ESTADOS DEL FILTRO
   const estados = [
@@ -64,7 +74,9 @@ export default function MovimientosScreen() {
       setSolicitudes(data);
       setLoading(false);
     });
-    return () => unsubscribe();
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, []);
 
   // Filtrar por usuario (si no es CEYE)

@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { tema } from "../tema";
-
+import { descontarStock } from "../firebase/descontarStock";
 import AgregarSolicitudModal from "../componentes/AgregarSolicitudModal";
 import AgregarSolicitudRapidaModal from "../componentes/AgregarSolicitudRapidaModal";
 import SolicitudCard from "../componentes/SolicitudCard";
@@ -77,23 +77,20 @@ export default function SolicitudesScreen() {
   }, []);
 
   // CEyE ve todo, los demás solo las suyas
-  // 1. Primero filtrar las NO finalizadas
   const solicitudesActivas = solicitudes.filter((s) => {
-  // Solicitudes que sí deben seguir apareciendo
-    const activasCEYE = ["Pendiente", "Aceptada"];
-    const activasOtros = ["Pendiente"];
+    if (rol === "ceye") {
+      return ["Pendiente", "Aceptada"].includes(s.estado);
+    }
 
-    return rol === "ceye"
-      ? activasCEYE.includes(s.estado)
-      : activasOtros.includes(s.estado) && s.usuario === usuario;
+    return (
+      s.usuario === usuario &&
+      ["Pendiente", "Aceptada", "Lista", "Problema", "Verificada"].includes(
+        s.estado
+      )
+    );
   });
 
-  // 2. CEYE ve todas las activas; otros solo las suyas (ya está arriba)
-  const solicitudesMostradas = solicitudesActivas;
-
-
-  // Ordenar por urgencia → fecha necesaria → fecha creación
-  const solicitudesOrdenadas = [...solicitudesMostradas].sort((a, b) => {
+  const solicitudesOrdenadas = [...solicitudesActivas].sort((a, b) => {
     const da = getDateFromField(a.fechaNecesaria);
     const db = getDateFromField(b.fechaNecesaria);
 
@@ -104,17 +101,53 @@ export default function SolicitudesScreen() {
     return (b.creadoEn || 0) - (a.creadoEn || 0);
   });
 
-  // Acciones CEyE
+  // ================================
+  // ACCIONES CEyE
+  // ================================
   const aceptar = (id) => updateSolicitud(id, { estado: "Aceptada" });
   const rechazar = (id) => updateSolicitud(id, { estado: "Rechazada" });
-  const marcarLista = (id) =>
-    updateSolicitud(id, { estado: "Lista" }).then(() =>
-      Alert.alert("Listo", "El solicitante ha sido notificado.")
-    );
 
-  // Acciones de verificación
-  const verificarOk = (id) => updateSolicitud(id, { estado: "Verificada" });
-  const verificarNo = (id) => updateSolicitud(id, { estado: "Problema" });
+  const marcarLista = async (id) => {
+    try {
+      await updateSolicitud(id, { estado: "Lista" });
+      Alert.alert("Listo", "La solicitud fue marcada como lista.");
+    } catch (e) {
+      console.error("Error marcar lista:", e);
+    }
+  };
+
+  // ================================
+  // ACCIONES ENFERMERÍA
+  // ================================
+  const verificarOk = async (id) => {
+    try {
+      const solicitud = solicitudes.find((s) => s.id === id);
+
+      if (solicitud?.items?.length > 0) {
+        const resultado = await descontarStock(solicitud.items);
+
+        if (!resultado.ok) {
+          const fallos = resultado.details
+            .filter((d) => d.error)
+            .map((d) => `${d.item?.nombre || "?"}: ${d.error}`)
+            .join("\n");
+
+          Alert.alert(
+            "Advertencia",
+            `Se verificó, pero algunos items no se actualizaron:\n${fallos}`
+          );
+        }
+      }
+
+      await updateSolicitud(id, { estado: "Verificada" });
+      Alert.alert("Correcto", "La solicitud fue verificada.");
+    } catch (error) {
+      console.error("Error verificar OK:", error);
+    }
+  };
+
+  const verificarNo = (id) =>
+    updateSolicitud(id, { estado: "Problema" });
 
   const renderItem = ({ item }) => (
     <SolicitudCard
@@ -143,7 +176,6 @@ export default function SolicitudesScreen() {
             </Text>
           </View>
 
-          {/* Botón agregar → solo para roles ≠ CEYE */}
           {rol !== "ceye" && (
             <TouchableOpacity
               style={styles.btnAgregar}
@@ -161,7 +193,7 @@ export default function SolicitudesScreen() {
           contentContainerStyle={{ paddingBottom: 20 }}
         />
 
-        {/* MODAL SELECTOR */}
+        {/* MODALES */}
         <Modal transparent visible={selectorVisible} animationType="fade">
           <View style={styles.selectorOverlay}>
             <View style={styles.selectorBox}>
@@ -174,7 +206,9 @@ export default function SolicitudesScreen() {
                   setModalElaboradaVisible(true);
                 }}
               >
-                <Text style={styles.selectorBtnText}>Solicitud elaborada</Text>
+                <Text style={styles.selectorBtnText}>
+                  Solicitud elaborada
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -184,7 +218,9 @@ export default function SolicitudesScreen() {
                   setModalRapidaVisible(true);
                 }}
               >
-                <Text style={styles.selectorBtnText}>Solicitud rápida</Text>
+                <Text style={styles.selectorBtnText}>
+                  Solicitud rápida
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -197,7 +233,6 @@ export default function SolicitudesScreen() {
           </View>
         </Modal>
 
-        {/* MODAL ELABORADA */}
         <AgregarSolicitudModal
           visible={modalElaboradaVisible}
           onClose={() => setModalElaboradaVisible(false)}
@@ -206,7 +241,6 @@ export default function SolicitudesScreen() {
           onEnviar={crearSolicitud}
         />
 
-        {/* MODAL RÁPIDA */}
         <AgregarSolicitudRapidaModal
           visible={modalRapidaVisible}
           onClose={() => setModalRapidaVisible(false)}
@@ -240,8 +274,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   btnAgregarText: { color: "#fff", fontWeight: "600" },
-
-  // Selector de tipo de solicitud
   selectorOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.3)",
@@ -266,7 +298,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 10,
   },
-  selectorBtnText: { color: "#fff", textAlign: "center", fontWeight: "600" },
+  selectorBtnText: {
+    color: "#fff",
+    textAlign: "center",
+    fontWeight: "600",
+  },
   selectorCancel: { marginTop: 8, padding: 8 },
   selectorCancelText: { textAlign: "center", color: "red" },
 });

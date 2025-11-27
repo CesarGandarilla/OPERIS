@@ -20,6 +20,8 @@ import { descontarStock } from "../firebase/descontarStock";
 import AgregarSolicitudModal from "../componentes/AgregarSolicitudModal";
 import AgregarSolicitudRapidaModal from "../componentes/AgregarSolicitudRapidaModal";
 import SolicitudCard from "../componentes/SolicitudCard";
+import { getInventario } from "../firebase/firebaseApi";
+import { collection, getDocs } from "firebase/firestore";
 
 import {
   listenSolicitudes,
@@ -70,6 +72,28 @@ export default function SolicitudesScreen() {
   // Crear solicitud elaborada
   const crearSolicitud = async (solicitudData) => {
     try {
+      // 1. Obtener inventario actual
+      const inventario = await getInventario();
+
+      // 2. Validar cada item de la solicitud
+      for (const item of solicitudData.items) {
+        const itemInv = inventario.find((i) => i.nombre === item.nombre);
+
+        if (!itemInv) {
+          Alert.alert("Error", `El item ${item.nombre} no existe en inventario.`);
+          return;
+        }
+
+        if (item.cantidad > itemInv.stock) {
+          Alert.alert(
+            "Cantidad inválida",
+            `Solo hay ${itemInv.stock} unidades de ${item.nombre} en inventario.`
+          );
+          return;
+        }
+      }
+
+      // 3. SI TODO ES CORRECTO → crear solicitud
       await createSolicitud({
         usuario,
         rol,
@@ -87,9 +111,29 @@ export default function SolicitudesScreen() {
     }
   };
 
+
   // Crear solicitud rápida
   const crearSolicitudRapida = async (solicitud) => {
     try {
+     const inventario = await getInventario();
+
+      for (const item of solicitud.items) {
+        const itemInv = inventario.find((i) => i.nombre === item.nombre);
+
+        if (!itemInv) {
+          Alert.alert("Error", `El item ${item.nombre} no existe en inventario.`);
+          return;
+        }
+
+        if (item.cantidad > itemInv.stock) {
+          Alert.alert(
+            "Cantidad inválida",
+            `Solo hay ${itemInv.stock} unidades de ${item.nombre} en inventario.`
+          );
+          return;
+        }
+      }
+
       await createSolicitud(solicitud);
 
       Alert.alert("Solicitud rápida enviada");
@@ -99,6 +143,7 @@ export default function SolicitudesScreen() {
       Alert.alert("Error", "No se pudo enviar la solicitud rápida.");
     }
   };
+
 
   // Listener solicitudes
   useEffect(() => {

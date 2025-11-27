@@ -1,3 +1,4 @@
+// src/pantallas/PanelDeControlScreen.js
 import React, { useState, useEffect } from "react";
 import { ScrollView, StyleSheet, View, Text } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -120,15 +121,15 @@ export default function PanelDeControlScreen({ navigation }) {
     (s) => s.usuario === emailUsuario
   );
 
-  const solicitudesActivasUsuario = solicitudesUsuario.filter((s) =>
-    ["Pendiente", "Aceptada", "Lista"].includes(s.estado)
-  );
+  // nuevo: solicitudes pendientes por CEyE (estado Pendiente)
+  const solicitudesPendientesCeyeUsuario = solicitudesUsuario.filter(
+    (s) => s.estado === "Pendiente"
+  ).length;
 
-  const solicitudesHoyUsuario = solicitudesActivasUsuario.filter((s) => {
-    const fecha = getJSDate(s.fechaNecesaria || s.creadoEn);
-    if (!fecha) return false;
-    return fecha >= hoy && fecha < mañana;
-  }).length;
+  // nuevo: solicitudes aceptadas/listas pero no verificadas (por verificar)
+  const solicitudesPorVerificarUsuario = solicitudesUsuario.filter((s) =>
+    ["Aceptada", "Lista"].includes(s.estado)
+  ).length;
 
   const solicitudesProblemaUsuario = solicitudesUsuario.filter(
     (s) => s.estado === "Problema"
@@ -213,7 +214,7 @@ export default function PanelDeControlScreen({ navigation }) {
                 }
               />
 
-              {/* SOLICITUDES PARA HOY (GLOBAL) */}
+              {/* 👇 AQUÍ EL CAMBIO: antes "Solicitudes hoy" con solicitudesParaHoyGlobal */}
               <StatCard
                 icon={
                   <AntDesign
@@ -223,9 +224,9 @@ export default function PanelDeControlScreen({ navigation }) {
                   />
                 }
                 iconBackgroundColor="#E7F7F6"
-                titulo="Solicitudes hoy"
-                valor={solicitudesParaHoyGlobal.toString()}
-                subtitulo="por preparar hoy"
+                titulo="Solicitudes pendientes"
+                valor={solicitudesPendientesGlobal.toString()}
+                subtitulo="por atender"
                 onPress={() => navigation.navigate("Solicitudes")}
               />
             </View>
@@ -256,7 +257,6 @@ export default function PanelDeControlScreen({ navigation }) {
               onPress={() => navigation.navigate("Movimientos")}
             />
 
-            {/* 👇 CAMBIO: antes "Inventario crítico", ahora va a Reportes */}
             <QuickAction
               icono={
                 <Ionicons
@@ -275,7 +275,23 @@ export default function PanelDeControlScreen({ navigation }) {
             <Text style={styles.sectionTitle}>Mis solicitudes</Text>
 
             <View style={styles.grid}>
-              {/* SOLICITUDES ACTIVAS */}
+              {/* PENDIENTES POR CEyE */}
+              <StatCard
+                icon={
+                  <AntDesign
+                    name="question-circle"
+                    size={24}
+                    color="#F59E0B"
+                  />
+                }
+                iconBackgroundColor="#FFFBEB"
+                titulo="Pendientes por CEyE"
+                valor={solicitudesPendientesCeyeUsuario.toString()}
+                subtitulo="aún sin aceptar"
+                onPress={() => navigation.navigate("Solicitudes")}
+              />
+
+              {/* ACTIVAS (POR VERIFICAR) */}
               <StatCard
                 icon={
                   <AntDesign
@@ -286,28 +302,16 @@ export default function PanelDeControlScreen({ navigation }) {
                 }
                 iconBackgroundColor="#EEF2FF"
                 titulo="Activas"
-                valor={solicitudesActivasUsuario.length.toString()}
-                subtitulo="pendientes de surtir"
-                onPress={() => navigation.navigate("Solicitudes")}
-              />
-
-              {/* PARA HOY */}
-              <StatCard
-                icon={
-                  <AntDesign
-                    name="calendar"
-                    size={24}
-                    color="#10B981"
-                  />
+                valor={solicitudesPorVerificarUsuario.toString()}
+                subtitulo="pendientes de verificar"
+                onPress={() =>
+                  navigation.navigate("Solicitudes", {
+                    filtroInicial: "Activas",
+                  })
                 }
-                iconBackgroundColor="#ECFDF3"
-                titulo="Para hoy"
-                valor={solicitudesHoyUsuario.toString()}
-                subtitulo="necesarias hoy"
-                onPress={() => navigation.navigate("Solicitudes")}
               />
 
-              {/* PROBLEMAS */}
+              {/* CON PROBLEMA */}
               <StatCard
                 icon={
                   <Feather name="alert-triangle" size={24} color="#F97316" />
@@ -316,7 +320,11 @@ export default function PanelDeControlScreen({ navigation }) {
                 titulo="Con problema"
                 valor={solicitudesProblemaUsuario.toString()}
                 subtitulo="requieren revisión"
-                onPress={() => navigation.navigate("Movimientos")}
+                onPress={() =>
+                  navigation.navigate("Movimientos", {
+                    estadoInicial: "Problema",
+                  })
+                }
               />
 
               {/* COMPLETADAS 7 DÍAS */}
@@ -332,7 +340,11 @@ export default function PanelDeControlScreen({ navigation }) {
                 titulo="Completadas"
                 valor={solicitudesCompletadasSemanaUsuario.toString()}
                 subtitulo="últimos 7 días"
-                onPress={() => navigation.navigate("Movimientos")}
+                onPress={() =>
+                  navigation.navigate("Movimientos", {
+                    estadoInicial: "Verificada",
+                  })
+                }
               />
             </View>
 
@@ -347,7 +359,11 @@ export default function PanelDeControlScreen({ navigation }) {
                 />
               }
               titulo="Hacer solicitud de insumos"
-              onPress={() => navigation.navigate("Solicitudes")}
+              onPress={() =>
+                navigation.navigate("Solicitudes", {
+                  abrirSelector: true,
+                })
+              }
             />
 
             <QuickAction

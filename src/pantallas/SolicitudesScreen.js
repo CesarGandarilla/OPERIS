@@ -1,5 +1,5 @@
 // src/pantallas/SolicitudesScreen.js
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,11 @@ import {
   Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  useRoute,
+  useNavigation,
+  useFocusEffect,
+} from "@react-navigation/native";
 import { tema } from "../tema";
 import { descontarStock } from "../firebase/descontarStock";
 import AgregarSolicitudModal from "../componentes/AgregarSolicitudModal";
@@ -26,6 +31,8 @@ import { useAuth } from "../auth/AuthContext";
 import { getDateFromField } from "../utils/fechaUtils";
 
 export default function SolicitudesScreen() {
+  const route = useRoute();
+  const navigation = useNavigation();
   const { user } = useAuth();
   const usuario = user?.profile?.email;
   const rol = user?.profile?.role?.toLowerCase();
@@ -36,6 +43,29 @@ export default function SolicitudesScreen() {
   const [selectorVisible, setSelectorVisible] = useState(false);
 
   const INK = tema?.colores?.ink || "#111827";
+
+  // viene del panel ("Activas", "Hoy", etc.)
+  const filtroInicial = route.params?.filtroInicial || "Activas";
+  const [modoFiltro, setModoFiltro] = useState(filtroInicial);
+
+  // si cambia el filtroInicial (ej. vienes de otra tarjeta del panel)
+  useEffect(() => {
+    setModoFiltro(filtroInicial);
+  }, [filtroInicial]);
+
+  // 👉 cada vez que la pantalla toma foco, si abrirSelector es true, abrimos el modal
+  useFocusEffect(
+    useCallback(() => {
+      if (route.params?.abrirSelector && rol !== "ceye") {
+        setSelectorVisible(true);
+        // reseteamos el param para que vuelva a funcionar la próxima vez
+        navigation.setParams({
+          ...route.params,
+          abrirSelector: false,
+        });
+      }
+    }, [route.params?.abrirSelector, rol, navigation])
+  );
 
   // Crear solicitud elaborada
   const crearSolicitud = async (solicitudData) => {
@@ -76,6 +106,10 @@ export default function SolicitudesScreen() {
     return () => unsub();
   }, []);
 
+  // ================================
+  // FILTROS BASE: ACTIVAS
+  // ================================
+
   // CEyE ve todo
   const solicitudesActivas = solicitudes.filter((s) => {
     if (rol === "ceye") {
@@ -89,8 +123,25 @@ export default function SolicitudesScreen() {
     );
   });
 
+  // Filtro extra "Para hoy" (por si lo usas)
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const mañana = new Date(hoy);
+  mañana.setDate(mañana.getDate() + 1);
+
+  let solicitudesFiltradas = solicitudesActivas;
+
+  if (rol !== "ceye" && modoFiltro === "Hoy") {
+    solicitudesFiltradas = solicitudesActivas.filter((s) => {
+      const fecha =
+        getDateFromField(s.fechaNecesaria) || getDateFromField(s.creadoEn);
+      if (!fecha) return false;
+      return fecha >= hoy && fecha < mañana;
+    });
+  }
+
   // Ordenar por fecha necesaria o fecha de creación
-  const solicitudesOrdenadas = [...solicitudesActivas].sort((a, b) => {
+  const solicitudesOrdenadas = [...solicitudesFiltradas].sort((a, b) => {
     const da = getDateFromField(a.fechaNecesaria);
     const db = getDateFromField(b.fechaNecesaria);
 
@@ -183,7 +234,10 @@ export default function SolicitudesScreen() {
             .map((d) => `${d.item?.nombre}: ${d.error}`)
             .join("\n");
 
-          Alert.alert("Advertencia", `Algunos items no se actualizaron:\n${fallos}`);
+          Alert.alert(
+            "Advertencia",
+            `Algunos items no se actualizaron:\n${fallos}`
+          );
         }
       }
 
@@ -216,7 +270,6 @@ export default function SolicitudesScreen() {
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
-
         {/* HEADER */}
         <View style={styles.header}>
           <View>
@@ -224,6 +277,7 @@ export default function SolicitudesScreen() {
             <Text style={styles.headerSubtitle}>
               {solicitudesOrdenadas.length}{" "}
               {solicitudesOrdenadas.length === 1 ? "solicitud" : "solicitudes"}
+              {rol !== "ceye" && modoFiltro === "Hoy" ? " para hoy" : ""}
             </Text>
           </View>
 

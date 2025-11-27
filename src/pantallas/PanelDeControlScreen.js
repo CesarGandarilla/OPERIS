@@ -279,7 +279,7 @@ export default function PanelDeControlScreen({ navigation }) {
               <StatCard
                 icon={
                   <AntDesign
-                    name="clockcircleo"
+                    name="clock-circle"
                     size={24}
                     color="#6366F1"
                   />
@@ -323,7 +323,7 @@ export default function PanelDeControlScreen({ navigation }) {
               <StatCard
                 icon={
                   <AntDesign
-                    name="checkcircleo"
+                    name="check-circle"
                     size={24}
                     color="#22C55E"
                   />

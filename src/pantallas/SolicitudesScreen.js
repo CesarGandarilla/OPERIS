@@ -1,4 +1,4 @@
-// src/pantallas/SolicitudesScreen.js
+// src/pantallas/SolicitudesScreen.js//jeje
 import React, { useEffect, useState, useCallback } from "react";
 import {
   View,

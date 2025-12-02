@@ -4,7 +4,7 @@ export const kits = [
     nombre: "Kit Apendicectomía",
     items: [
       { nombre: "Sutura Seda/Silk calibre 2-0", cantidad: 2 },
-      { nombre: "Sutura catgut calibre 2-0", cantidad: 1 },
+      { nombre: "Sutura Catgut calibre 2-0", cantidad: 1 },
       { nombre: "Gasas estériles", cantidad: 10 },
       { nombre: "Guantes estériles talla 8", cantidad: 2 },
       { nombre: "Bisturí #15", cantidad: 1 }

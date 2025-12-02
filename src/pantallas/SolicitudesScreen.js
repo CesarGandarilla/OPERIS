@@ -21,16 +21,13 @@ import AgregarSolicitudModal from "../componentes/AgregarSolicitudModal";
 import AgregarSolicitudRapidaModal from "../componentes/AgregarSolicitudRapidaModal";
 import SolicitudCard from "../componentes/SolicitudCard";
 import { getInventario } from "../firebase/firebaseApi";
-import { collection, getDocs } from "firebase/firestore";
-
-import {
-  listenSolicitudes,
-  updateSolicitud,
-  createSolicitud,
-} from "../firebase/firebaseApi";
-
+import { listenSolicitudes, updateSolicitud, createSolicitud } from "../firebase/firebaseApi";
 import { useAuth } from "../auth/AuthContext";
 import { getDateFromField } from "../utils/fechaUtils";
+
+//KITS IMPORTADOS
+import { kits } from "../constants/kits";
+import { MaterialIcons } from "@expo/vector-icons";
 
 export default function SolicitudesScreen() {
   const route = useRoute();
@@ -46,21 +43,17 @@ export default function SolicitudesScreen() {
 
   const INK = tema?.colores?.ink || "#111827";
 
-  // viene del panel ("Activas", "Hoy", etc.)
   const filtroInicial = route.params?.filtroInicial || "Activas";
   const [modoFiltro, setModoFiltro] = useState(filtroInicial);
 
-  // si cambia el filtroInicial (ej. vienes de otra tarjeta del panel)
   useEffect(() => {
     setModoFiltro(filtroInicial);
   }, [filtroInicial]);
 
-  // 👉 cada vez que la pantalla toma foco, si abrirSelector es true, abrimos el modal
   useFocusEffect(
     useCallback(() => {
       if (route.params?.abrirSelector && rol !== "ceye") {
         setSelectorVisible(true);
-        // reseteamos el param para que vuelva a funcionar la próxima vez
         navigation.setParams({
           ...route.params,
           abrirSelector: false,
@@ -72,10 +65,8 @@ export default function SolicitudesScreen() {
   // Crear solicitud elaborada
   const crearSolicitud = async (solicitudData) => {
     try {
-      // 1. Obtener inventario actual
       const inventario = await getInventario();
 
-      // 2. Validar cada item de la solicitud
       for (const item of solicitudData.items) {
         const itemInv = inventario.find((i) => i.nombre === item.nombre);
 
@@ -93,7 +84,6 @@ export default function SolicitudesScreen() {
         }
       }
 
-      // 3. SI TODO ES CORRECTO → crear solicitud
       await createSolicitud({
         usuario,
         rol,
@@ -111,11 +101,10 @@ export default function SolicitudesScreen() {
     }
   };
 
-
   // Crear solicitud rápida
   const crearSolicitudRapida = async (solicitud) => {
     try {
-     const inventario = await getInventario();
+      const inventario = await getInventario();
 
       for (const item of solicitud.items) {
         const itemInv = inventario.find((i) => i.nombre === item.nombre);
@@ -144,31 +133,65 @@ export default function SolicitudesScreen() {
     }
   };
 
+  // CREAR SOLICITUD DESDE KIT
+  const crearSolicitudDesdeKit = async (kit) => {
+    try {
+      const solicitudData = {
+        usuario,
+        rol,
+        estado: "Pendiente",
+        creadoEn: Date.now(),
+        tipo: "elaborada",
+        items: kit.items.map((i) => ({
+          nombre: i.nombre,
+          cantidad: i.cantidad,
+        })),
+        nota: `Solicitud generada desde kit: ${kit.nombre}`,
+      };
 
-  // Listener solicitudes
+      const inventario = await getInventario();
+
+      for (const item of solicitudData.items) {
+        const itemInv = inventario.find((i) => i.nombre === item.nombre);
+
+        if (!itemInv) {
+          Alert.alert("Error", `El item ${item.nombre} no existe en inventario.`);
+          return;
+        }
+
+        if (item.cantidad > itemInv.stock) {
+          Alert.alert(
+            "Stock insuficiente",
+            `Solo hay ${itemInv.stock} unidades de ${item.nombre}.`
+          );
+          return;
+        }
+      }
+
+      await createSolicitud(solicitudData);
+      Alert.alert("Kit agregado", `Se generó una solicitud para ${kit.nombre}`);
+    } catch (e) {
+      console.error("Error creando solicitud desde kit", e);
+      Alert.alert("Error", "No se pudo crear la solicitud del kit.");
+    }
+  };
+
+  // Listener
   useEffect(() => {
     const unsub = listenSolicitudes((data) => setSolicitudes(data));
     return () => unsub();
   }, []);
 
-  // ================================
-  // FILTROS BASE: ACTIVAS
-  // ================================
-
-  // CEyE ve todo
   const solicitudesActivas = solicitudes.filter((s) => {
     if (rol === "ceye") {
       return ["Pendiente", "Aceptada"].includes(s.estado);
     }
-
-    // Enfermería ve solo las suyas
     return (
       s.usuario === usuario &&
       ["Pendiente", "Aceptada", "Lista"].includes(s.estado)
     );
   });
 
-  // Filtro extra "Para hoy" (por si lo usas)
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
   const mañana = new Date(hoy);
@@ -178,14 +201,12 @@ export default function SolicitudesScreen() {
 
   if (rol !== "ceye" && modoFiltro === "Hoy") {
     solicitudesFiltradas = solicitudesActivas.filter((s) => {
-      const fecha =
-        getDateFromField(s.fechaNecesaria) || getDateFromField(s.creadoEn);
+      const fecha = getDateFromField(s.fechaNecesaria) || getDateFromField(s.creadoEn);
       if (!fecha) return false;
       return fecha >= hoy && fecha < mañana;
     });
   }
 
-  // Ordenar por fecha necesaria o fecha de creación
   const solicitudesOrdenadas = [...solicitudesFiltradas].sort((a, b) => {
     const da = getDateFromField(a.fechaNecesaria);
     const db = getDateFromField(b.fechaNecesaria);
@@ -197,11 +218,8 @@ export default function SolicitudesScreen() {
     return (b.creadoEn || 0) - (a.creadoEn || 0);
   });
 
-  // ================================
-  // ACCIONES CEYE
-  // ================================
-  const aceptar = (id) =>
-    updateSolicitud(id, { estado: "Aceptada" });
+  // Acciones CEYE
+  const aceptar = (id) => updateSolicitud(id, { estado: "Aceptada" });
 
   const rechazar = async (id) => {
     try {
@@ -263,9 +281,6 @@ export default function SolicitudesScreen() {
     }
   };
 
-  // ================================
-  // ACCIONES ENFERMERÍA
-  // ================================
   const verificarOk = async (id) => {
     try {
       const sol = solicitudes.find((s) => s.id === id);
@@ -279,10 +294,7 @@ export default function SolicitudesScreen() {
             .map((d) => `${d.item?.nombre}: ${d.error}`)
             .join("\n");
 
-          Alert.alert(
-            "Advertencia",
-            `Algunos items no se actualizaron:\n${fallos}`
-          );
+          Alert.alert("Advertencia", `Algunos items no se actualizaron:\n${fallos}`);
         }
       }
 
@@ -293,10 +305,8 @@ export default function SolicitudesScreen() {
     }
   };
 
-  const verificarNo = (id) =>
-    updateSolicitud(id, { estado: "Problema" });
+  const verificarNo = (id) => updateSolicitud(id, { estado: "Problema" });
 
-  // Render card
   const renderItem = ({ item }) => (
     <SolicitudCard
       item={item}
@@ -315,6 +325,7 @@ export default function SolicitudesScreen() {
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
+
         {/* HEADER */}
         <View style={styles.header}>
           <View>
@@ -335,6 +346,41 @@ export default function SolicitudesScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* SCROLL HORIZONTAL DE KITS */}
+        {rol === "enfermero" && (
+            <View style={{ height: 120, marginBottom: 10 }}>
+              <FlatList
+                data={kits}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingRight: 10 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    onPress={() => crearSolicitudDesdeKit(item)}
+                    style={styles.kitCard}
+                  >
+                    <View style={styles.kitIcon}>
+                      <MaterialIcons
+                        name="medical-services"
+                        size={24}
+                        color="#00BFA5"
+                      />
+                    </View>
+
+                    <Text style={styles.kitTitle} numberOfLines={1}>
+                      {item.nombre}
+                    </Text>
+
+                    <Text style={styles.kitSubtitle}>
+                      {item.items.length} items
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          )}
 
         {/* LISTA */}
         <FlatList
@@ -449,4 +495,40 @@ const styles = StyleSheet.create({
   selectorBtnText: { color: "#fff", textAlign: "center", fontWeight: "600" },
   selectorCancel: { marginTop: 8 },
   selectorCancelText: { textAlign: "center", color: "red" },
+
+  // ESTILOS DE LOS KITS
+  kitCard: {
+    width: 160,
+    height: 100,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    marginRight: 10,
+    padding: 12,
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  kitIcon: {
+    backgroundColor: "#E8FFFB",
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 12,
+    marginBottom: 5,
+  },
+
+  kitTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#333",
+  },
+
+  kitSubtitle: {
+    fontSize: 12,
+    color: "#777",
+  },
 });

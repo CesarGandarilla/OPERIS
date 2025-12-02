@@ -9,17 +9,18 @@ import {
   TouchableOpacity,
   Animated,
   TouchableWithoutFeedback,
+  ActivityIndicator,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRoute } from "@react-navigation/native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
 import { listenSolicitudes } from "../firebase/firebaseApi";
-import { updateSolicitudEstado } from "../firebase/firebaseApi"; // 🔵 AGREGADO
+import { updateSolicitudEstado } from "../firebase/firebaseApi";
 import { getDateFromField, formatFechaNecesaria } from "../utils/fechaUtils";
 import { tema } from "../tema";
 
-// Colores limpios e iOS
 const INK = tema?.colores?.ink || "#111827";
 
 // Badge color por estado
@@ -42,61 +43,53 @@ const getColor = (estado) => {
   }
 };
 
-/** Dropdown genérico para filtros
- *  IMPLEMENTACIÓN: estilo y comportamiento igual a FiltrosInventario.js
- *  - botón blanco con borde verde/azul
- *  - lista desplegable animada (altura)
- *  - overlay tocable para cerrar
- */
-function DropdownFiltro({ label, value, options = [], onChange }) {
-  const [visible, setVisible] = useState(false);
+/** Dropdown genérico para filtros mejorado */
+function DropdownFiltro({ label, value, options = [], onChange, isOpen, onToggle }) {
   const animHeight = useRef(new Animated.Value(0)).current;
   const ITEM_HEIGHT = 41;
 
   useEffect(() => {
     Animated.timing(animHeight, {
-      toValue: visible ? options.length * ITEM_HEIGHT : 0,
+      toValue: isOpen ? options.length * ITEM_HEIGHT : 0,
       duration: 240,
       useNativeDriver: false,
     }).start();
-  }, [visible, options.length, animHeight]);
-
-  const toggleMenu = () => setVisible((v) => !v);
+  }, [isOpen, options.length, animHeight]);
 
   const seleccionar = (op) => {
     onChange(op);
-    setVisible(false);
+    onToggle();
   };
 
   return (
     <View style={styles.filtroWrapper}>
       <Text style={styles.filtroLabel}>{label}</Text>
 
-      {/* Botón principal con estilo igual a Inventario */}
-      <TouchableOpacity style={styles.filtroButton} onPress={toggleMenu} activeOpacity={0.9}>
+      <TouchableOpacity 
+        style={[
+          styles.filtroButton,
+          isOpen && styles.filtroButtonActive
+        ]} 
+        onPress={onToggle} 
+        activeOpacity={0.7}
+      >
         <Ionicons name="filter-outline" size={18} color="#00bfa5" />
         <Text style={styles.filtroButtonText}>{value || "Selecciona..."}</Text>
         <Ionicons
-          name={visible ? "chevron-up" : "chevron-down"}
+          name={isOpen ? "chevron-up" : "chevron-down"}
           size={18}
           color="#00bfa5"
           style={{ marginLeft: 6 }}
         />
       </TouchableOpacity>
 
-      {/* Fondo transparente para cerrar el menú al tocar fuera */}
-      {visible && (
-        <TouchableWithoutFeedback onPress={() => setVisible(false)}>
-          <View style={styles.filtroOverlay} />
-        </TouchableWithoutFeedback>
-      )}
-
       {/* Menú desplegable animado */}
       <Animated.View style={[styles.filtroDropdown, { height: animHeight }]}>
-        {visible && (
+        {isOpen && (
           <FlatList
             data={options}
             keyExtractor={(item) => item}
+            scrollEnabled={false}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={[
@@ -113,6 +106,9 @@ function DropdownFiltro({ label, value, options = [], onChange }) {
                 >
                   {item}
                 </Text>
+                {value === item && (
+                  <Ionicons name="checkmark" size={16} color="#00bfa5" />
+                )}
               </TouchableOpacity>
             )}
           />
@@ -135,6 +131,9 @@ export default function MovimientosScreen() {
   const [filtroFecha, setFiltroFecha] = useState("Todos");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  // Control de dropdowns abiertos
+  const [dropdownAbierto, setDropdownAbierto] = useState(null);
 
   useEffect(() => {
     setFiltro(estadoInicial);
@@ -229,13 +228,19 @@ export default function MovimientosScreen() {
     );
   });
 
-  // --------------------------------------------------------
-  // 🔵 ACCIÓN NUEVA: ACTUALIZAR ESTADO
-  // --------------------------------------------------------
+  // Cambiar estado de solicitud
   async function cambiarEstado(id, nuevoEstado) {
-    await updateSolicitudEstado(id, nuevoEstado);
+    try {
+      await updateSolicitudEstado(id, nuevoEstado);
+    } catch (error) {
+      console.error("Error al actualizar estado:", error);
+      // Aquí podrías mostrar una alerta al usuario
+    }
   }
-  // --------------------------------------------------------
+
+  const toggleDropdown = (nombre) => {
+    setDropdownAbierto(dropdownAbierto === nombre ? null : nombre);
+  };
 
   const renderItem = ({ item }) => {
     const fechaNecesariaTexto = formatFechaNecesaria(item.fechaNecesaria);
@@ -291,34 +296,28 @@ export default function MovimientosScreen() {
 
         <Text style={styles.fechaCreacion}>Creado: {fechaCreacionTexto}</Text>
 
-        
-        {/*  BOTONES DE CAMBIO DE ESTADO    */}
-        
-        {rol === "enfermero" && (
+        {/* BOTONES DE CAMBIO DE ESTADO */}
+        {rol === "enfermero" && item.estado === "Problema" && (
           <View style={styles.botonesRow}>
-            {item.estado === "Problema" && (
-              <TouchableOpacity
-                style={[styles.btn, { backgroundColor: "#F59E0B" }]}
-                onPress={() => cambiarEstado(item.id, "Lista")}
-              >
-                <Text style={styles.btnText}>Reabrir</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={[styles.btn, { backgroundColor: "#10B981" }]}
+              onPress={() => cambiarEstado(item.id, "Lista")}
+            >
+              <Ionicons name="refresh" size={14} color="white" style={{ marginRight: 4 }} />
+              <Text style={styles.btnText}>Reabrir</Text>
+            </TouchableOpacity>
           </View>
-        )
-        }
-        {rol === "ceye" && (
-          <View style={styles.botonesRow}>
-            {item.estado === "Rechazada" && (
-              <TouchableOpacity
-                style={[styles.btn, { backgroundColor: "#EF4444" }]}
-                onPress={() => cambiarEstado(item.id, "Pendiente")}
-              >
-                <Text style={styles.btnText}>Reabrir</Text>
-              </TouchableOpacity>
-            )}
+        )}
 
-           
+        {rol === "ceye" && item.estado === "Rechazada" && (
+          <View style={styles.botonesRow}>
+            <TouchableOpacity
+              style={[styles.btn, { backgroundColor: "#3B82F6" }]}
+              onPress={() => cambiarEstado(item.id, "Pendiente")}
+            >
+              <Ionicons name="refresh" size={14} color="white" style={{ marginRight: 4 }} />
+              <Text style={styles.btnText}>Reabrir</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -327,6 +326,13 @@ export default function MovimientosScreen() {
 
   return (
     <SafeAreaView style={styles.safeContainer}>
+      {/* Overlay para cerrar dropdowns */}
+      {dropdownAbierto && (
+        <TouchableWithoutFeedback onPress={() => setDropdownAbierto(null)}>
+          <View style={styles.overlayGlobal} />
+        </TouchableWithoutFeedback>
+      )}
+
       <View style={styles.container}>
         <Text style={styles.title}>Movimientos</Text>
 
@@ -337,24 +343,31 @@ export default function MovimientosScreen() {
           onChangeText={setSearch}
         />
 
-        {/* ---------- FILTRO: ESTADO (estilo Inventario) ---------- */}
+        {/* FILTRO: ESTADO */}
         <DropdownFiltro
           label="Estado"
           value={filtro}
           options={estados}
           onChange={setFiltro}
+          isOpen={dropdownAbierto === "estado"}
+          onToggle={() => toggleDropdown("estado")}
         />
 
-        {/* ---------- FILTRO: FECHA (estilo Inventario) ---------- */}
+        {/* FILTRO: FECHA */}
         <DropdownFiltro
           label="Fecha"
           value={filtroFecha}
           options={filtrosFecha}
           onChange={setFiltroFecha}
+          isOpen={dropdownAbierto === "fecha"}
+          onToggle={() => toggleDropdown("fecha")}
         />
 
         {loading ? (
-          <Text style={styles.loadingText}>Cargando...</Text>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#00bfa5" />
+            <Text style={styles.loadingText}>Cargando movimientos...</Text>
+          </View>
         ) : (
           <FlatList
             data={movimientosFiltrados}
@@ -366,8 +379,12 @@ export default function MovimientosScreen() {
             }}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
+                <Ionicons name="folder-open-outline" size={64} color="#D1D5DB" />
                 <Text style={styles.emptyText}>
-                  No hay movimientos con este filtro.
+                  No hay movimientos con este filtro
+                </Text>
+                <Text style={styles.emptySubtext}>
+                  Intenta cambiar los filtros o la búsqueda
                 </Text>
               </View>
             }
@@ -392,17 +409,30 @@ const styles = StyleSheet.create({
   searchBar: {
     backgroundColor: "#F2F2F6",
     borderRadius: 12,
-    padding: 10,
-    marginBottom: 8,
+    padding: 12,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#E5E7EB",
+    fontSize: 14,
   },
 
-  /* --- estilos del dropdown (etiqueta + botón) --- */
-  filtrosSection: {
-    marginBottom: 8,
+  /* --- Overlay global --- */
+  overlayGlobal: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    zIndex: 100,
   },
 
+  /* --- Dropdown styles --- */
+  filtroWrapper: {
+    marginBottom: 12,
+    zIndex: 200,
+  },
+  
   filtroLabel: {
     fontSize: 12,
     fontWeight: "600",
@@ -411,104 +441,69 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  /* estilos del wrapper/button/dropdown (inspirado en FiltrosInventario.js) */
-  filtroWrapper: {
-    marginBottom: 8,
-    zIndex: 30,
-  },
   filtroButton: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "#00bfa5",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
     backgroundColor: "#fff",
-    zIndex: 10,
   },
+
+  filtroButtonActive: {
+    backgroundColor: "#F0FDFA",
+    borderColor: "#00bfa5",
+  },
+
   filtroButtonText: {
     flex: 1,
     marginLeft: 8,
     color: "#00bfa5",
-    fontWeight: "bold",
+    fontWeight: "600",
+    fontSize: 14,
   },
+
   filtroDropdown: {
     overflow: "hidden",
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    marginTop: 5,
-    elevation: 3,
-    zIndex: 20,
-  },
-  filtroItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  filtroItemSeleccionado: {
-    backgroundColor: "#e0f2f1",
-  },
-  filtroItemText: {
-    fontSize: 13,
-    color: "#333",
-  },
-  filtroItemTextSeleccionado: {
-    color: "#00bfa5",
-    fontWeight: "bold",
-  },
-  filtroOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "transparent",
-    zIndex: 5,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    marginTop: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
 
-  dropdownButton: {
+  filtroItem: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  dropdownValue: {
-    fontSize: 13,
-    color: INK,
-    flex: 1,
-    marginRight: 6,
-  },
-  dropdownPlaceholder: {
-    color: "#9CA3AF",
-  },
-  dropdownOptions: {
-    marginTop: 4,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    overflow: "hidden",
-  },
-  dropdownOption: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  dropdownOptionText: {
-    fontSize: 13,
-    color: "#4B5563",
-  },
-  dropdownOptionTextActivo: {
-    fontWeight: "600",
-    color: INK,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
   },
 
+  filtroItemSeleccionado: {
+    backgroundColor: "#F0FDFA",
+  },
+
+  filtroItemText: {
+    fontSize: 14,
+    color: "#374151",
+  },
+
+  filtroItemTextSeleccionado: {
+    color: "#00bfa5",
+    fontWeight: "600",
+  },
+
+  /* --- Cards --- */
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 14,
@@ -561,6 +556,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: INK,
   },
+
   cirugiaText: {
     fontSize: 12,
     color: "#4B5563",
@@ -572,7 +568,11 @@ const styles = StyleSheet.create({
     color: "#6B7280",
   },
 
-  itemsContainer: { marginTop: 6 },
+  itemsContainer: { 
+    marginTop: 6,
+    gap: 2,
+  },
+
   item: {
     fontSize: 12,
     color: "#4B5563",
@@ -585,15 +585,18 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
   },
 
+  /* --- Botones de acción --- */
   botonesRow: {
     flexDirection: "row",
-    marginTop: 10,
-    gap: 6,
+    marginTop: 12,
+    gap: 8,
   },
 
   btn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 8,
   },
 
@@ -603,18 +606,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  emptyContainer: {
-    marginTop: 40,
+  /* --- Loading y Empty --- */
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
     alignItems: "center",
-  },
-  emptyText: {
-    fontSize: 14,
-    color: "#9CA3AF",
+    paddingTop: 60,
   },
 
   loadingText: {
-    textAlign: "center",
-    marginTop: 20,
+    marginTop: 12,
+    fontSize: 14,
     color: "#6B7280",
+  },
+
+  emptyContainer: {
+    marginTop: 60,
+    alignItems: "center",
+    paddingHorizontal: 40,
+  },
+
+  emptyText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#6B7280",
+    marginTop: 16,
+    textAlign: "center",
+  },
+
+  emptySubtext: {
+    fontSize: 13,
+    color: "#9CA3AF",
+    marginTop: 4,
+    textAlign: "center",
   },
 });

@@ -291,28 +291,34 @@ export default function MovimientosScreen() {
 
         <Text style={styles.fechaCreacion}>Creado: {fechaCreacionTexto}</Text>
 
-        {/* ---------------------------------- */}
-        {/* 🔵 BOTONES DE CAMBIO DE ESTADO    */}
-        {/* ---------------------------------- */}
+        
+        {/*  BOTONES DE CAMBIO DE ESTADO    */}
+        
+        {rol === "enfermero" && (
+          <View style={styles.botonesRow}>
+            {item.estado === "Problema" && (
+              <TouchableOpacity
+                style={[styles.btn, { backgroundColor: "#F59E0B" }]}
+                onPress={() => cambiarEstado(item.id, "Lista")}
+              >
+                <Text style={styles.btnText}>Reabrir</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )
+        }
         {rol === "ceye" && (
           <View style={styles.botonesRow}>
             {item.estado === "Rechazada" && (
               <TouchableOpacity
-                style={[styles.btn, { backgroundColor: "#9CA3AF" }]}
+                style={[styles.btn, { backgroundColor: "#EF4444" }]}
                 onPress={() => cambiarEstado(item.id, "Pendiente")}
               >
                 <Text style={styles.btnText}>Reabrir</Text>
               </TouchableOpacity>
             )}
 
-            {item.estado === "Problema" && (
-              <TouchableOpacity
-                style={[styles.btn, { backgroundColor: "#F59E0B" }]}
-                onPress={() => cambiarEstado(item.id, "Pendiente")}
-              >
-                <Text style={styles.btnText}>Reabrir</Text>
-              </TouchableOpacity>
-            )}
+           
           </View>
         )}
       </View>

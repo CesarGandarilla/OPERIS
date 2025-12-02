@@ -13,8 +13,11 @@ import {
   Platform,
   Keyboard,
   TouchableWithoutFeedback,
+  FlatList,
 } from "react-native";
-import DateTimePickerModal from "react-native-modal-datetime-picker";
+
+import dayjs from "dayjs";
+
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
 
@@ -45,8 +48,8 @@ export default function AgregarSolicitudModal({
   const [paso, setPaso] = useState(1);
   // fecha / hora
   const [fechaNecesaria, setFechaNecesaria] = useState(null);
-  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
-  const [isTimePickerVisible, setTimePickerVisibility] = useState(false);
+  const [openCalendar, setOpenCalendar] = useState(false);
+  const [openClock, setOpenClock] = useState(false);
   // destino
   const [lugarEntrega, setLugarEntrega] = useState(null);
   const [destinoBusqueda, setDestinoBusqueda] = useState("");
@@ -65,7 +68,9 @@ export default function AgregarSolicitudModal({
   const [mostrarResultadosCirugia, setMostrarResultadosCirugia] =
     useState(false);
 
+  // ---------------------------
   // Cargar insumos desde Firestore (una vez)
+  // ---------------------------
   useEffect(() => {
     let mounted = true;
     const cargarInsumos = async () => {
@@ -84,7 +89,9 @@ export default function AgregarSolicitudModal({
     };
   }, []);
 
-  // Mapeos útiles: nombre -> insumo (buscar por igualdad en minúsculas)
+  // ---------------------------
+  // Mapeos útiles
+  // ---------------------------
   const insumoPorNombre = useMemo(() => {
     const map = new Map();
     insumos.forEach((i) => {
@@ -98,7 +105,6 @@ export default function AgregarSolicitudModal({
     if (!visible) return;
     const inicial = kitSeleccionado?.items || itemsIniciales || null;
     if (inicial && Array.isArray(inicial)) {
-      // Mapear: si existe nombre en inventario, traer su id; si no, dejar null.
       const itemsMapeados = inicial.map((it) => {
         const nombre = (it.nombre || "").trim();
         const encontrado = insumoPorNombre.get(nombre.toLowerCase());
@@ -114,7 +120,6 @@ export default function AgregarSolicitudModal({
         itemsMapeados.length ? "Kit cargado en la selección." : ""
       );
     }
-    // Si no hay iniciales, no tocamos la selección
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, kitSeleccionado, itemsIniciales, insumoPorNombre]);
 
@@ -144,8 +149,8 @@ export default function AgregarSolicitudModal({
     setLugarEntrega(null);
     setDestinoBusqueda("");
     setCirugia("");
-    setDatePickerVisibility(false);
-    setTimePickerVisibility(false);
+    setOpenCalendar(false);
+    setOpenClock(false);
     setPaso(1);
     setErrores({
       cantidad: "",
@@ -164,7 +169,7 @@ export default function AgregarSolicitudModal({
     onClose();
   };
 
-  // Agregar item a seleccion (mantiene lógica original, pero robusta)
+  // Agregar item a seleccion (mantiene lógica original)
   const agregarItem = () => {
     setErrores((prev) => ({ ...prev, cantidad: "" }));
     setMensajeInsumo("");
@@ -235,29 +240,30 @@ export default function AgregarSolicitudModal({
     setMensajeInsumo("");
   };
 
-  // Date/time handlers
-  const showDatePicker = () => setDatePickerVisibility(true);
-  const hideDatePicker = () => setDatePickerVisibility(false);
+  // Date/time handlers (abren nuestros modales JS)
+  const showDatePicker = () => setOpenCalendar(true);
+  const hideDatePicker = () => setOpenCalendar(false);
 
-  const showTimePicker = () => setTimePickerVisibility(true);
-  const hideTimePicker = () => setTimePickerVisibility(false);
+  const showTimePicker = () => setOpenClock(true);
+  const hideTimePicker = () => setOpenClock(false);
 
-  const handleConfirmDate = (date) => {
+  // Cuando el usuario confirma desde mi CalendarModal
+  const handleConfirmDateFromCalendar = (date) => {
+    if (!date) return;
     const base = fechaNecesaria ? new Date(fechaNecesaria) : new Date();
     const nueva = new Date(base);
     nueva.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
     setFechaNecesaria(nueva);
     setErrores((prev) => ({ ...prev, fecha: "" }));
-    hideDatePicker();
   };
 
-  const handleConfirmTime = (time) => {
+  // Cuando el usuario confirma desde mi TimePickerModal
+  const handleConfirmTimeFromClock = (hours, minutes) => {
     const base = fechaNecesaria ? new Date(fechaNecesaria) : new Date();
     const nueva = new Date(base);
-    nueva.setHours(time.getHours(), time.getMinutes());
+    nueva.setHours(hours, minutes, 0, 0);
     setFechaNecesaria(nueva);
     setErrores((prev) => ({ ...prev, fecha: "" }));
-    hideTimePicker();
   };
 
   const mostrarTextoFechaHora = () => {
@@ -367,6 +373,222 @@ export default function AgregarSolicitudModal({
     </View>
   );
 
+  // ---------------------------
+  // CalendarModal (pure JS)
+  // ---------------------------
+  const CalendarModal = ({ visible, initialDate, onCancel, onConfirm }) => {
+    const [monthOffset, setMonthOffset] = useState(0);
+    const base = initialDate ? dayjs(initialDate) : dayjs();
+    const displayed = base.add(monthOffset, "month");
+    const startOfMonth = displayed.startOf("month");
+    const endOfMonth = displayed.endOf("month");
+    const monthMatrix = []; // rows of weeks (each row is 7 items)
+    const firstDayIndex = startOfMonth.day(); // 0 (Sun) - 6 (Sat)
+    const daysInMonth = displayed.daysInMonth();
+
+    // Create a 6x7 grid (to always have enough rows)
+    let current = startOfMonth.subtract(firstDayIndex, "day");
+    for (let week = 0; week < 6; week++) {
+      const row = [];
+      for (let day = 0; day < 7; day++) {
+        row.push(current.toDate());
+        current = current.add(1, "day");
+      }
+      monthMatrix.push(row);
+    }
+
+    const [selectedDateLocal, setSelectedDateLocal] = useState(
+      initialDate ? new Date(initialDate) : null
+    );
+
+    useEffect(() => {
+      // reset when visible opens
+      if (visible) {
+        setMonthOffset(0);
+        setSelectedDateLocal(initialDate ? new Date(initialDate) : null);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible]);
+
+    const isSameDay = (a, b) => {
+      if (!a || !b) return false;
+      return (
+        a.getFullYear() === b.getFullYear() &&
+        a.getMonth() === b.getMonth() &&
+        a.getDate() === b.getDate()
+      );
+    };
+
+    return (
+      <Modal visible={visible} transparent animationType="fade">
+        <View style={styles.popupBackground}>
+          <View style={styles.calendarContainer}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <TouchableOpacity onPress={() => setMonthOffset((m) => m - 1)} style={{ padding: 8 }}>
+                <Text style={{ fontSize: 18 }}>‹</Text>
+              </TouchableOpacity>
+              <Text style={{ fontWeight: "700", fontSize: 16 }}>
+                {displayed.format("MMMM YYYY")}
+              </Text>
+              <TouchableOpacity onPress={() => setMonthOffset((m) => m + 1)} style={{ padding: 8 }}>
+                <Text style={{ fontSize: 18 }}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Weekday labels */}
+            <View style={{ flexDirection: "row", marginTop: 8 }}>
+              {["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"].map((wd) => (
+                <View key={wd} style={{ flex: 1, alignItems: "center", paddingVertical: 6 }}>
+                  <Text style={{ fontWeight: "600" }}>{wd}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Days grid */}
+            <View>
+              {monthMatrix.map((row, ri) => (
+                <View key={ri} style={{ flexDirection: "row" }}>
+                  {row.map((d, ci) => {
+                    const inCurrentMonth = d.getMonth() === displayed.month();
+                    const isToday = isSameDay(d, new Date());
+                    const isSelected = selectedDateLocal && isSameDay(d, selectedDateLocal);
+
+                    return (
+                      <TouchableOpacity
+                        key={ci}
+                        style={[
+                          styles.calendarDay,
+                          inCurrentMonth ? null : styles.calendarDayMuted,
+                          isSelected && styles.calendarDaySelected,
+                        ]}
+                        onPress={() => setSelectedDateLocal(new Date(d))}
+                        disabled={!inCurrentMonth}
+                      >
+                        <Text style={[
+                          styles.calendarDayText,
+                          isToday && styles.calendarDayTodayText,
+                          !inCurrentMonth && { color: "#BDBDBD" },
+                          isSelected && { color: "#fff", fontWeight: "700" }
+                        ]}>
+                          {d.getDate()}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+
+            <View style={{ marginTop: 12 }}>
+              <TouchableOpacity
+                style={styles.popupButton}
+                onPress={() => {
+                  onConfirm(selectedDateLocal);
+                }}
+              >
+                <Text style={styles.popupButtonText}>Seleccionar fecha</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={onCancel} style={{ marginTop: 10 }}>
+                <Text style={styles.cancelPopup}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  // ---------------------------
+  // TimePickerModal (pure JS)
+  // ---------------------------
+  const TimePickerModal = ({ visible, initialDate, onCancel, onConfirm }) => {
+    const initDate = initialDate ? new Date(initialDate) : new Date();
+    const [hour, setHour] = useState(initDate.getHours());
+    const [minute, setMinute] = useState(Math.round(initDate.getMinutes() / 5) * 5);
+
+    useEffect(() => {
+      if (visible) {
+        const d = initialDate ? new Date(initialDate) : new Date();
+        setHour(d.getHours());
+        setMinute(Math.round(d.getMinutes() / 5) * 5);
+      }
+    }, [visible, initialDate]);
+
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    const minutes = Array.from({ length: 12 }, (_, i) => i * 5); // 0,5,10,...55
+
+    return (
+      <Modal visible={visible} transparent animationType="fade">
+        <View style={styles.popupBackground}>
+          <View style={styles.timeContainer}>
+            <Text style={{ fontWeight: "700", fontSize: 16, textAlign: "center", marginBottom: 8 }}>
+              Seleccionar hora
+            </Text>
+
+            <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center" }}>
+              <View style={{ width: 120, height: 180 }}>
+                <FlatList
+                  data={hours}
+                  keyExtractor={(i) => `${i}`}
+                  showsVerticalScrollIndicator={false}
+                  initialScrollIndex={hour}
+                  getItemLayout={(_, index) => ({ length: 36, offset: 36 * index, index })}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[styles.timeOption, item === hour && styles.timeOptionSelected]}
+                      onPress={() => setHour(item)}
+                    >
+                      <Text style={[styles.timeOptionText, item === hour && { color: "#fff", fontWeight: "700" }]}>
+                        {String(item).padStart(2, "0")}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+
+              <Text style={{ marginHorizontal: 8, fontSize: 20 }}>:</Text>
+
+              <View style={{ width: 120, height: 180 }}>
+                <FlatList
+                  data={minutes}
+                  keyExtractor={(i) => `${i}`}
+                  showsVerticalScrollIndicator={false}
+                  initialScrollIndex={minutes.indexOf(minute)}
+                  getItemLayout={(_, index) => ({ length: 36, offset: 36 * index, index })}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[styles.timeOption, item === minute && styles.timeOptionSelected]}
+                      onPress={() => setMinute(item)}
+                    >
+                      <Text style={[styles.timeOptionText, item === minute && { color: "#fff", fontWeight: "700" }]}>
+                        {String(item).padStart(2, "0")}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.popupButton, { marginTop: 12 }]}
+              onPress={() => onConfirm(hour, minute)}
+            >
+              <Text style={styles.popupButtonText}>Seleccionar hora</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={onCancel} style={{ marginTop: 10 }}>
+              <Text style={styles.cancelPopup}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  // ---------------------------
+  // RENDER
+  // ---------------------------
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <KeyboardAvoidingView
@@ -424,7 +646,6 @@ export default function AgregarSolicitudModal({
                           {insumosFiltrados.length === 0 ? (
                             <View style={styles.item}>
                               <Text>No se encontraron insumos</Text>
-                              {/* Permitir crear item "libre" usando el texto de búsqueda */}
                               <TouchableOpacity
                                 style={{ padding: 8 }}
                                 onPress={() => {
@@ -607,22 +828,25 @@ export default function AgregarSolicitudModal({
                 )}
               </ScrollView>
 
-              {/* DatePickers */}
-              <DateTimePickerModal
-                isVisible={isDatePickerVisible}
-                mode="date"
-                onConfirm={handleConfirmDate}
-                onCancel={hideDatePicker}
-                textColor="#000"
-                isDarkModeEnabled={false}
+              {/* NUEVOS PICKERS (JS) */}
+              <CalendarModal
+                visible={openCalendar}
+                initialDate={fechaNecesaria}
+                onCancel={() => setOpenCalendar(false)}
+                onConfirm={(d) => {
+                  handleConfirmDateFromCalendar(d);
+                  setOpenCalendar(false);
+                }}
               />
-              <DateTimePickerModal
-                isVisible={isTimePickerVisible}
-                mode="time"
-                onConfirm={handleConfirmTime}
-                onCancel={hideTimePicker}
-                textColor="#000"
-                isDarkModeEnabled={false}
+
+              <TimePickerModal
+                visible={openClock}
+                initialDate={fechaNecesaria}
+                onCancel={() => setOpenClock(false)}
+                onConfirm={(h, m) => {
+                  handleConfirmTimeFromClock(h, m);
+                  setOpenClock(false);
+                }}
               />
 
               {/* Navegación */}
@@ -857,4 +1081,93 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#555",
   },
+
+  /* POPUP / PICKER STYLES */
+  popupBackground: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  calendarContainer: {
+    width: "92%",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    maxHeight: "82%",
+  },
+  calendarDay: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 10,
+    marginVertical: 4,
+  },
+  calendarDayMuted: {
+    opacity: 0.35,
+  },
+  calendarDaySelected: {
+    backgroundColor: "#00BFA5",
+    borderRadius: 22,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  calendarDayText: {
+    fontSize: 14,
+  },
+  calendarDayTodayText: {
+    color: "#00A86B",
+    fontWeight: "700",
+  },
+
+  popupButton: {
+    backgroundColor: "#00BFA5",
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 12,
+    alignItems: "center",
+  },
+  popupButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  cancelPopup: {
+    marginTop: 12,
+    textAlign: "center",
+    color: "red",
+    fontWeight: "600",
+  },
+
+  timeContainer: {
+    width: "86%",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    alignItems: "center",
+  },
+  timeOption: {
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  timeOptionSelected: {
+    backgroundColor: "#00BFA5",
+    borderRadius: 8,
+  },
+  timeOptionText: {
+    fontSize: 16,
+  },
+
+  /* small rest kept from original */
+  searchInputSmall: { backgroundColor: "#F1F1F1", borderRadius: 8, padding: 8 },
+
+  /* keep existing original styles below as-is (duplicates removed) */
+  smallListContainer: {
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: "#EEE",
+    marginTop: 4,
+    borderRadius: 12,
+  },
+  
 });

@@ -259,7 +259,8 @@ export default function SolicitudesScreen() {
     });
   }
 
-  // Prioridad de estados
+  
+    // Prioridad de estados
   const prioridadEstado = {
     Pendiente: 1,
     Aceptada: 2,
@@ -268,23 +269,30 @@ export default function SolicitudesScreen() {
 
   // Ordenador final
   const solicitudesOrdenadas = [...solicitudesFiltradas].sort((a, b) => {
-    // 1. Ordenar primero por estado según prioridad
+    // 1. Ordenar por estado primero
     const pa = prioridadEstado[a.estado] || 99;
     const pb = prioridadEstado[b.estado] || 99;
 
     if (pa !== pb) return pa - pb;
 
-    // 2. Si tienen el mismo estado, ordenar por fecha necesaria
+    // 2. Obtener fechas
     const da = getDateFromField(a.fechaNecesaria);
     const db = getDateFromField(b.fechaNecesaria);
 
-    if (da && db) return da - db;
-    if (da && !db) return -1;
-    if (!da && db) return 1;
+    const tieneFechaA = Boolean(da);
+    const tieneFechaB = Boolean(db);
 
-    // 3. Si no tienen fecha → ordenar por fecha de creación
+    // ✔️ PRIORIDAD: Solicitudes rápidas (sin fecha) van primero
+    if (!tieneFechaA && tieneFechaB) return -1;
+    if (tieneFechaA && !tieneFechaB) return 1;
+
+    // 3. Si ambos tienen fecha → ordenar por fecha más cercana
+    if (tieneFechaA && tieneFechaB) return da - db;
+
+    // 4. Si ninguno tiene fecha → ordenar por fecha de creación
     return (a.creadoEn || 0) - (b.creadoEn || 0);
   });
+
 
 
   // ---- ACCIONES CEYE ----

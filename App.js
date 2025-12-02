@@ -22,9 +22,8 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 function Tabs() {
-  // 👇 leemos el rol del usuario logueado
   const { user } = useAuth() || {};
-  const role = user?.profile?.role; // "CEyE" o "Enfermero"
+  const role = user?.profile?.role;
 
   return (
     <Tab.Navigator
@@ -32,6 +31,10 @@ function Tabs() {
         headerShown: false,
         tabBarActiveTintColor: tema.colores.teal,
         tabBarInactiveTintColor: tema.colores.sub,
+
+        // 👇 FIX para que el nombre quede debajo del icono
+        tabBarLabelPosition: "below-icon",
+
         tabBarStyle: {
           height: 80,
           backgroundColor: "#fff",
@@ -81,7 +84,6 @@ function Tabs() {
         }}
       />
 
-      {/* ESTA TAB SOLO EXISTE SI ES CEyE */}
       {role === "CEyE" && (
         <Tab.Screen
           name="Reportes"
@@ -124,7 +126,6 @@ function AuthStack() {
   );
 }
 
-// Componente para usar useAuth dentro del provider
 function RootNavigator() {
   const { user, loading } = useAuth();
 

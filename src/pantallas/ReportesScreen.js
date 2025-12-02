@@ -1,130 +1,154 @@
 // src/pantallas/ReportesScreen.js
+
+// importamos react y los hooks que usaremos para estado, efectos y memoización
 import React, { useEffect, useMemo, useState } from "react";
-import EstadoBadge from "../componentes/EstadoBadge"; // ajusta la ruta si es diferente
+// import envoltura segura para respetar las áreas seguras de la pantalla
 import { SafeAreaView } from "react-native-safe-area-context";
+// importamos componentes básicos de interfaz
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
   Dimensions,
+  Modal,
+  Alert,
 } from "react-native";
-import { AntDesign, Feather } from "@expo/vector-icons";
-import { PieChart } from "react-native-chart-kit";
+// iconos que usaremos en algunas tarjetas (aunque aquí casi todo se delega a componentes hijos)
+import { Feather, Ionicons } from "@expo/vector-icons";
+// tema global de la app (colores, etc.)
 import { tema } from "../tema";
+// función que escucha cambios en las solicitudes desde firebase
 import { listenSolicitudes } from "../firebase/firebaseApi";
+// catálogo de lugares de entrega para poder mostrar y filtrar destinos
 import { LUGARES_ENTREGA } from "../constants/lugaresEntrega";
 
+// exportar CSV
+// librerías para escribir archivos y compartirlos (para el reporte en csv)
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
+
+// componentes nuevos
+// estas cards son componentes separados para mantener esta pantalla más limpia
+import ReportesFiltrosCard from "../componentes/ReportesFiltrosCard";
+import ReportesTopInsumosCard from "../componentes/ReportesTopInsumosCard";
+import ReportesConsumoInsumoCard from "../componentes/ReportesConsumoInsumoCard";
+import ReportesSolicitudesCard from "../componentes/ReportesSolicitudesCard";
+import ReporteDetalleModal from "../componentes/ReporteDetalleModal";
+
+// rangos de fechas que el usuario puede elegir para filtrar (7 días, 30 días, todo)
 const RANGOS = [
   { id: "7d", label: "Últimos 7 días", dias: 7 },
   { id: "30d", label: "Últimos 30 días", dias: 30 },
   { id: "todo", label: "Todo", dias: null },
 ];
 
+// ancho de pantalla para usar si se necesita en algún layout
 const screenWidth = Dimensions.get("window").width;
 
-const PIE_COLORS = ["#00BFA5", "#60A5FA", "#F59E0B", "#EF4444", "#6B7280"];
+// helper quitar acentos
+// esta función normaliza texto: pasa a minúsculas y quita acentos para comparar búsquedas sin problemas
+const normalizeText = (str) =>
+  (str ?? "")
+    .toString()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
-// (opcional) helper para estilos de estado si lo usas más adelante
-const getEstadoStyle = (estado) => {
-  const est = estado?.toLowerCase();
-
-  if (est === "lista" || est === "verificada") {
-    return {
-      dot: "#00BFA5",
-      backgroundColor: "rgba(0, 191, 165, 0.15)",
-      color: "#00BFA5",
-    };
+// helper fechas
+// esta función convierte diferentes formatos (timestamp, número, string, etc.) a un objeto date usable
+const toDate = (valor) => {
+  if (!valor) return null;
+  if (valor instanceof Date) return valor;
+  if (typeof valor?.toDate === "function") return valor.toDate();
+  if (typeof valor === "number") return new Date(valor);
+  if (typeof valor === "string") {
+    const d = new Date(valor);
+    return isNaN(d.getTime()) ? null : d;
   }
-
-  if (est === "aceptada") {
-    return {
-      dot: "#3B82F6",
-      backgroundColor: "rgba(96, 165, 250, 0.18)",
-      color: "#3B82F6",
-    };
+  if (typeof valor === "object" && valor.seconds) {
+    return new Date(valor.seconds * 1000);
   }
-
-  if (est === "rechazada") {
-    return {
-      dot: "#EF4444",
-      backgroundColor: "rgba(239, 68, 68, 0.18)",
-      color: "#EF4444",
-    };
+  if (typeof valor === "object" && valor._seconds) {
+    return new Date(valor._seconds * 1000);
   }
-
-  return {
-    dot: "#6B7280",
-    backgroundColor: "#E5E7EB",
-    color: "#374151",
-  };
+  return null;
 };
 
-const ReportesScreen = ({ navigation }) => {
+// componente principal de la pantalla de reportes
+const ReportesScreen = () => {
+  // aquí guardamos todas las solicitudes que vienen de firebase
   const [solicitudes, setSolicitudes] = useState([]);
+
+  // filtros principales: rango de fechas y destino (servicio)
   const [filtroRango, setFiltroRango] = useState("7d");
   const [filtroDestino, setFiltroDestino] = useState("todos");
 
+  // búsqueda y selección de insumo para la parte de consumo por insumo
   const [insumoBusqueda, setInsumoBusqueda] = useState("");
   const [insumoSeleccionadoId, setInsumoSeleccionadoId] = useState(null);
 
+  // filtros para la lista de solicitudes (estado y búsqueda de texto)
   const [filtroEstado, setFiltroEstado] = useState("todas");
+  const [busquedaSolicitud, setBusquedaSolicitud] = useState("");
 
+  // estados para manejar el modal de detalle de solicitud
+  const [modalVisible, setModalVisible] = useState(false);
+  const [solicitudSeleccionada, setSolicitudSeleccionada] = useState(null);
+
+  // efecto que se suscribe en tiempo real a las solicitudes de firebase
   useEffect(() => {
     const unsub = listenSolicitudes((lista) => {
+      // si por cualquier cosa viene null/undefined, caemos en arreglo vacío
       setSolicitudes(lista || []);
     });
+    // al desmontar el componente limpiamos el listener
     return () => {
       if (typeof unsub === "function") unsub();
     };
   }, []);
 
-  const toDate = (valor) => {
-    if (!valor) return null;
-    if (valor instanceof Date) return valor;
-    if (typeof valor?.toDate === "function") return valor.toDate();
-    if (typeof valor === "number") return new Date(valor);
-    if (typeof valor === "string") {
-      const d = new Date(valor);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    if (typeof valor === "object" && valor.seconds) {
-      return new Date(valor.seconds * 1000);
-    }
-    if (typeof valor === "object" && valor._seconds) {
-      return new Date(valor._seconds * 1000);
-    }
-    return null;
-  };
-
+  // ================== FILTRO PRINCIPAL (rango + destino) ==================
+  // usamos usememo para recalcular las solicitudes filtradas solo cuando cambien sus dependencias
   const solicitudesFiltradas = useMemo(() => {
     if (!Array.isArray(solicitudes)) return [];
 
     const ahora = new Date();
+    const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
     let fechaDesde = null;
 
+    // buscamos en la constante rangos la configuración del rango actual
     const rangoConf = RANGOS.find((r) => r.id === filtroRango);
 
+    // si el rango tiene valor en días, calculamos la fecha desde donde se cuentan las solicitudes
     if (rangoConf && rangoConf.dias != null) {
       fechaDesde = new Date(
-        ahora.getFullYear(),
-        ahora.getMonth(),
-        ahora.getDate() - rangoConf.dias
+        hoy.getFullYear(),
+        hoy.getMonth(),
+        hoy.getDate() - rangoConf.dias
       );
     }
 
+    // filtramos por fecha y por destino
     return solicitudes.filter((s) => {
       const base = s.fechaNecesaria ?? s.creadoEn;
       const fecha = toDate(base);
       if (!fecha) return false;
+
+      // si hay fecha desde, y la solicitud es anterior, la excluimos
       if (fechaDesde && fecha < fechaDesde) return false;
+
+      // filtramos por destino si no se seleccionó "todos"
       if (filtroDestino !== "todos") {
         if (s.destinoId) {
+          // si la solicitud tiene destinoId, comparamos contra el filtro
           if (s.destinoId !== filtroDestino) return false;
         } else if (s.destino) {
-          const destinoObj = LUGARES_ENTREGA.find((d) => d.id === filtroDestino);
+          // si solo tiene el nombre del destino, buscamos el objeto en el catálogo
+          const destinoObj = LUGARES_ENTREGA.find(
+            (d) => d.id === filtroDestino
+          );
           if (!destinoObj || destinoObj.nombre !== s.destino) return false;
         }
       }
@@ -132,28 +156,8 @@ const ReportesScreen = ({ navigation }) => {
     });
   }, [solicitudes, filtroRango, filtroDestino]);
 
-  const topDestinos = useMemo(() => {
-    if (filtroDestino !== "todos") return [];
-    const conteo = {};
-
-    solicitudesFiltradas.forEach((s) => {
-      const id = s.destinoId || s.destino || "sin-destino";
-      const nombre =
-        s.destino ||
-        LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
-        "Sin destino";
-
-      if (!conteo[id]) {
-        conteo[id] = { id, nombre, count: 0 };
-      }
-      conteo[id].count += 1;
-    });
-
-    const listado = Object.values(conteo);
-    listado.sort((a, b) => b.count - a.count);
-    return listado.slice(0, 5);
-  }, [solicitudesFiltradas, filtroDestino]);
-
+  // ================== TOP INSUMOS ==================
+  // aquí generamos el top de insumos más solicitados en el rango y destino seleccionados
   const topInsumos = useMemo(() => {
     const conteo = {};
     solicitudesFiltradas.forEach((s) => {
@@ -162,19 +166,25 @@ const ReportesScreen = ({ navigation }) => {
         const nombre = item.nombre || "Sin nombre";
         const cantidad = item.cantidad ?? 0;
 
+        // si el insumo no está en el objeto, lo inicializamos
         if (!conteo[id]) {
           conteo[id] = { id, nombre, totalCantidad: 0, totalSolicitudes: 0 };
         }
+        // sumamos cantidades y contamos cuántas solicitudes lo incluyen
         conteo[id].totalCantidad += cantidad;
         conteo[id].totalSolicitudes += 1;
       });
     });
 
+    // convertimos el objeto en arreglo y lo ordenamos por cantidad total pedida
     const listado = Object.values(conteo);
     listado.sort((a, b) => b.totalCantidad - a.totalCantidad);
+    // regresamos solo el top 5
     return listado.slice(0, 5);
   }, [solicitudesFiltradas]);
 
+  // ================== AGREGADOS POR INSUMO ==================
+  // este mapa guarda los totales por insumo para usarlo tanto en lista como en detalle
   const insumosAggregados = useMemo(() => {
     const mapa = {};
     solicitudesFiltradas.forEach((s) => {
@@ -183,6 +193,7 @@ const ReportesScreen = ({ navigation }) => {
         const nombre = item.nombre || "Sin nombre";
         const cantidad = item.cantidad ?? 0;
 
+        // si no existe el insumo en el mapa, lo creamos
         if (!mapa[id]) {
           mapa[id] = {
             id,
@@ -191,6 +202,7 @@ const ReportesScreen = ({ navigation }) => {
             totalSolicitudes: 0,
           };
         }
+        // sumamos cantidad y número de solicitudes donde aparece
         mapa[id].totalCantidad += cantidad;
         mapa[id].totalSolicitudes += 1;
       });
@@ -198,21 +210,26 @@ const ReportesScreen = ({ navigation }) => {
     return mapa;
   }, [solicitudesFiltradas]);
 
+  // lista de insumos para el buscador (se usa en la card de consumo por insumo)
   const insumosParaBusqueda = useMemo(() => {
     const lista = Object.values(insumosAggregados);
+    // si no hay texto de búsqueda, mostramos los 10 con más consumo
     if (!insumoBusqueda.trim()) {
       return lista
         .sort((a, b) => b.totalCantidad - a.totalCantidad)
         .slice(0, 10);
     }
 
-    const texto = insumoBusqueda.toLowerCase();
+    // si hay texto, normalizamos y filtramos por nombre
+    const texto = normalizeText(insumoBusqueda);
     return lista
-      .filter((i) => i.nombre.toLowerCase().includes(texto))
+      .filter((i) => normalizeText(i.nombre).includes(texto))
       .sort((a, b) => b.totalCantidad - a.totalCantidad)
       .slice(0, 10);
   }, [insumosAggregados, insumoBusqueda]);
 
+  // ================== DETALLE INSUMO ==================
+  // aquí calculamos datos detallados del insumo seleccionado (total, destinos, fechas, promedio por día)
   const insumoSeleccionadoDetalle = useMemo(() => {
     if (!insumoSeleccionadoId) return null;
 
@@ -222,6 +239,7 @@ const ReportesScreen = ({ navigation }) => {
     let fechaPrimera = null;
     let fechaUltima = null;
 
+    // recorremos las solicitudes filtradas para ver en cuáles aparece el insumo
     solicitudesFiltradas.forEach((s) => {
       const items = s.items || [];
       const contiene = items.some(
@@ -231,6 +249,7 @@ const ReportesScreen = ({ navigation }) => {
 
       if (!contiene) return;
 
+      // sumamos la cantidad del insumo en esa solicitud
       items.forEach((it) => {
         const id = it.insumoId || it.nombre || "sin-id";
         if (id === insumoSeleccionadoId) {
@@ -238,18 +257,22 @@ const ReportesScreen = ({ navigation }) => {
         }
       });
 
+      // aumentamos el contador de solicitudes donde aparece
       totalSolicitudes += 1;
 
+      // obtenemos el nombre amigable del destino
       const destinoNombre =
         s.destino ||
         LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
-        "Sin destino";
+        "Solicitud rápida";
 
+      // contamos cuántas veces se pide en cada destino
       if (!destinosConteo[destinoNombre]) {
         destinosConteo[destinoNombre] = 0;
       }
       destinosConteo[destinoNombre] += 1;
 
+      // actualizamos primera y última fecha en que se pidió ese insumo
       const fecha = toDate(s.fechaNecesaria ?? s.creadoEn);
       if (!fecha) return;
 
@@ -257,11 +280,13 @@ const ReportesScreen = ({ navigation }) => {
       if (!fechaUltima || fecha > fechaUltima) fechaUltima = fecha;
     });
 
+    // convertimos el conteo de destinos a arreglo y lo ordenamos
     const destinosArray = Object.entries(destinosConteo).map(
       ([nombre, count]) => ({ nombre, count })
     );
     destinosArray.sort((a, b) => b.count - a.count);
 
+    // calculamos promedio de consumo por día dentro de las fechas donde se pidió el insumo
     let promedioPorDia = null;
     if (fechaPrimera && fechaUltima) {
       const ms = fechaUltima.getTime() - fechaPrimera.getTime();
@@ -278,6 +303,7 @@ const ReportesScreen = ({ navigation }) => {
     };
   }, [insumoSeleccionadoId, solicitudesFiltradas]);
 
+  // formateador de fecha corta para mostrar en tarjetas
   const formatearFechaCorta = (fecha) => {
     if (!fecha) return "-";
     const d = new Date(fecha);
@@ -288,448 +314,319 @@ const ReportesScreen = ({ navigation }) => {
     });
   };
 
+  // formateador para el promedio por día, con un decimal
   const formatearPromedio = (valor) => {
     if (valor == null || isNaN(valor)) return "-";
     return valor.toFixed(1);
   };
 
-  // 🔹 filtro de estados SOLO problema, verificada y rechazada
+  // ================== FILTRO POR ESTADO + BÚSQUEDA ==================
+  // aquí filtramos las solicitudes por estado (problema, verificadas, rechazadas) y por texto
   const solicitudesFiltradasPorEstado = useMemo(() => {
     if (!Array.isArray(solicitudesFiltradas)) return [];
+
+    const texto = normalizeText(busquedaSolicitud.trim());
 
     return solicitudesFiltradas.filter((s) => {
       const estado = (s.estado || "").toLowerCase();
 
-      // excluir siempre pendientes y listas
-      if (estado === "pendiente" || estado === "lista") {
+      // excluimos de reportes las solicitudes que siguen activas (pendiente, lista, aceptada)
+      if (
+        estado === "pendiente" ||
+        estado === "lista" ||
+        estado === "aceptada"
+      ) {
         return false;
       }
 
-      // "todas": solo problema, verificada y rechazada
+      // validamos si el estado de la solicitud pasa el filtro seleccionado
+      let pasaEstado = false;
       if (filtroEstado === "todas") {
-        return (
+        pasaEstado =
           estado === "problema" ||
           estado === "verificada" ||
-          estado === "rechazada"
-        );
+          estado === "rechazada";
+      } else if (filtroEstado === "completadas") {
+        pasaEstado = estado === "verificada";
+      } else if (filtroEstado === "rechazadas") {
+        pasaEstado = estado === "rechazada";
       }
 
-      // "completadas": solo verificadas
-      if (filtroEstado === "completadas") {
-        return estado === "verificada";
-      }
+      if (!pasaEstado) return false;
 
-      // "rechazadas": solo rechazadas
-      if (filtroEstado === "rechazadas") {
-        return estado === "rechazada";
-      }
+      // si no hay texto de búsqueda, con pasar el estado es suficiente
+      if (!texto) return true;
 
-      return false;
+      // armamos varias cadenas para buscar: usuario, destino, cirugía, nombres de insumos y fecha
+      const usuarioStr = normalizeText(s.usuario);
+      const destinoStr = normalizeText(
+        s.destino ||
+          LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
+          ""
+      );
+      const cirugiaStr = normalizeText(s.cirugia);
+      const itemsStr = normalizeText(
+        (s.items || [])
+          .map((it) => it.nombre || "")
+          .join(" ")
+      );
+
+      const fecha = toDate(s.fechaNecesaria ?? s.creadoEn);
+      const fechaStr = normalizeText(
+        fecha
+          ? fecha.toLocaleDateString("es-MX", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            })
+          : ""
+      );
+
+      // la solicitud pasa si alguna de estas cadenas contiene el texto buscado
+      return (
+        usuarioStr.includes(texto) ||
+        destinoStr.includes(texto) ||
+        cirugiaStr.includes(texto) ||
+        itemsStr.includes(texto) ||
+        fechaStr.includes(texto)
+      );
     });
-  }, [solicitudesFiltradas, filtroEstado]);
+  }, [solicitudesFiltradas, filtroEstado, busquedaSolicitud]);
 
-  const pieDataDestinos = useMemo(() => {
-    if (!topDestinos || topDestinos.length === 0) return [];
+  // ================== DETALLE SOLICITUD PARA MODAL ==================
+  // aquí preparamos la info que se muestra en el modal cuando el usuario toca una solicitud
+  const solicitudSeleccionadaDetalle = useMemo(() => {
+    if (!solicitudSeleccionada) return null;
 
-    return topDestinos.map((d, idx) => ({
-      name: d.nombre || "Sin destino",
-      count: d.count,
-      color: PIE_COLORS[idx % PIE_COLORS.length],
-      legendFontColor: "#374151",
-      legendFontSize: 12,
-    }));
-  }, [topDestinos]);
+    const fecha = toDate(
+      solicitudSeleccionada.fechaNecesaria ?? solicitudSeleccionada.creadoEn
+    );
+    const fechaTexto = fecha
+      ? `${fecha.toLocaleDateString("es-MX", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })} · ${fecha.toLocaleTimeString("es-MX", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`
+      : "Sin fecha";
 
+    const destinoNombre =
+      solicitudSeleccionada.destino ||
+      LUGARES_ENTREGA.find((d) => d.id === solicitudSeleccionada.destinoId)
+        ?.nombre ||
+      "Solicitud rápida";
+
+    const items = solicitudSeleccionada.items || [];
+
+    return {
+      fechaTexto,
+      destinoNombre,
+      items,
+      usuario: solicitudSeleccionada.usuario || "Desconocido",
+      cirugia: solicitudSeleccionada.cirugia || null,
+      estado: solicitudSeleccionada.estado || "",
+    };
+  }, [solicitudSeleccionada]);
+
+  // colores base que tomamos del tema para que la pantalla respete el diseño general
   const ACCENT = tema?.colores?.accent || "#00BFA5";
   const BG = tema?.colores?.bg || "#F7F8FA";
   const INK = tema?.colores?.ink || "#111827";
+
+  // función para cerrar el modal y limpiar la solicitud seleccionada
+  const cerrarModal = () => {
+    setModalVisible(false);
+    setSolicitudSeleccionada(null);
+  };
+
+  // ================== EXPORTAR CSV ==================
+  // esta función arma un archivo csv con las solicitudes filtradas y lo comparte
+  const exportarCSV = async () => {
+    try {
+      // si no hay solicitudes después de los filtros, avisamos que no hay nada para exportar
+      if (!solicitudesFiltradasPorEstado.length) {
+        Alert.alert(
+          "Sin datos",
+          "No hay solicitudes para exportar con los filtros actuales."
+        );
+        return;
+      }
+
+      // máximo número de insumos en cualquier solicitud
+      // esto nos sirve para generar suficientes columnas insumo_x / cantidad_x
+      const maxInsumos = Math.max(
+        0,
+        ...solicitudesFiltradasPorEstado.map((s) => (s.items || []).length)
+      );
+
+      // encabezados fijos del csv
+      const headers = [
+        "Fecha de pedido",
+        "Usuario",
+        "Destino",
+        "Cirugia",
+        "Estado",
+      ];
+
+      // agregamos pares de columnas por cada posible insumo
+      for (let i = 1; i <= maxInsumos; i++) {
+        headers.push(`Insumo_${i}`);
+        headers.push(`Cantidad_${i}`);
+      }
+
+      // construimos las filas a partir de cada solicitud
+      const filas = solicitudesFiltradasPorEstado.map((s) => {
+        const fecha = toDate(s.fechaNecesaria ?? s.creadoEn);
+        const fechaStr = fecha
+          ? fecha.toLocaleString("es-MX", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "";
+
+        const destinoNombre =
+          s.destino ||
+          LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
+          "Solicitud rápida";
+
+        const cirugiaTexto =
+          s.cirugia && String(s.cirugia).trim() !== ""
+            ? s.cirugia
+            : "No aplica";
+
+        // base de cada fila: datos generales de la solicitud
+        const base = [
+          fechaStr,
+          s.usuario || "",
+          destinoNombre,
+          cirugiaTexto,
+          s.estado || "",
+        ];
+
+        const row = [...base];
+        const items = s.items || [];
+
+        // por cada posición hasta el máximo de insumos, agregamos nombre y cantidad
+        for (let i = 0; i < maxInsumos; i++) {
+          if (items[i]) {
+            row.push(items[i].nombre || "");
+            row.push(
+              items[i].cantidad === 0 || items[i].cantidad
+                ? items[i].cantidad
+                : ""
+            );
+          } else {
+            // si esta solicitud no tiene insumo en esa posición, metemos campos vacíos
+            row.push("");
+            row.push("");
+          }
+        }
+
+        return row;
+      });
+
+      // helper para escapar comillas y envolver cada campo entre comillas
+      const escapeCampo = (campo) => {
+        const c = String(campo ?? "").replace(/"/g, '""');
+        return `"${c}"`;
+      };
+
+      // armamos todas las líneas del csv: primero encabezados, luego filas
+      const lineas = [
+        headers.map(escapeCampo).join(","),
+        ...filas.map((fila) => fila.map(escapeCampo).join(",")),
+      ];
+
+      const contenido = lineas.join("\n");
+
+      // ruta donde se va a guardar el archivo en el dispositivo
+      const fileUri =
+        FileSystem.documentDirectory + "reporte_solicitudes.csv";
+
+      // escribimos el contenido y luego abrimos el diálogo para compartir
+      await FileSystem.writeAsStringAsync(fileUri, contenido);
+      await Sharing.shareAsync(fileUri);
+    } catch (e) {
+      console.error("Error exportando CSV:", e);
+      Alert.alert(
+        "Error",
+        "Ocurrió un problema al exportar el archivo. Intenta de nuevo."
+      );
+    }
+  };
+
   return (
+    // usamos safeareaview para respetar notch y barras, y le aplicamos el color de fondo del tema
     <SafeAreaView style={[styles.screen, { backgroundColor: BG }]}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.title, { color: INK }]}>Resumen de solicitudes</Text>
+        {/* título principal de la pantalla de reportes */}
+        <Text style={[styles.title, { color: INK }]}>
+          Resumen de solicitudes
+        </Text>
 
-        {/* FILTROS */}
-        <View style={[styles.card, styles.cardElevated]}>
-          <Text style={styles.cardTitle}>Filtros</Text>
+        {/* filtros de rango y destino */}
+        <ReportesFiltrosCard
+          filtroRango={filtroRango}
+          setFiltroRango={setFiltroRango}
+          filtroDestino={filtroDestino}
+          setFiltroDestino={setFiltroDestino}
+          RANGOS={RANGOS}
+          LUGARES_ENTREGA={LUGARES_ENTREGA}
+          accentColor={ACCENT}
+        />
 
-          <Text style={styles.filterLabel}>Rango de fechas</Text>
-          <View style={styles.chipRow}>
-            {RANGOS.map((r) => (
-              <TouchableOpacity
-                key={r.id}
-                style={[
-                  styles.chip,
-                  filtroRango === r.id && { ...styles.chipActive, backgroundColor: ACCENT },
-                ]}
-                onPress={() => setFiltroRango(r.id)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    filtroRango === r.id && styles.chipTextActive,
-                  ]}
-                >
-                  {r.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        {/* top de insumos más consumidos */}
+        <ReportesTopInsumosCard topInsumos={topInsumos} accentColor={ACCENT} />
 
-          <Text style={[styles.filterLabel, { marginTop: 12 }]}>Destino</Text>
-          <View style={styles.chipRow}>
-            <TouchableOpacity
-              style={[
-                styles.chip,
-                filtroDestino === "todos" && { ...styles.chipActive, backgroundColor: ACCENT },
-              ]}
-              onPress={() => setFiltroDestino("todos")}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  filtroDestino === "todos" && styles.chipTextActive,
-                ]}
-              >
-                Todos
-              </Text>
-            </TouchableOpacity>
+        {/* bloque para analizar consumo detallado de un insumo específico */}
+        <ReportesConsumoInsumoCard
+          insumoBusqueda={insumoBusqueda}
+          setInsumoBusqueda={setInsumoBusqueda}
+          insumoSeleccionadoId={insumoSeleccionadoId}
+          setInsumoSeleccionadoId={setInsumoSeleccionadoId}
+          insumosParaBusqueda={insumosParaBusqueda}
+          insumoSeleccionadoDetalle={insumoSeleccionadoDetalle}
+          formatearFechaCorta={formatearFechaCorta}
+          formatearPromedio={formatearPromedio}
+          accentColor={ACCENT}
+        />
 
-            {LUGARES_ENTREGA.map((lugar) => (
-              <TouchableOpacity
-                key={lugar.id}
-                style={[
-                  styles.chip,
-                  filtroDestino === lugar.id && { ...styles.chipActive, backgroundColor: ACCENT },
-                ]}
-                onPress={() => setFiltroDestino(lugar.id)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    filtroDestino === lugar.id && styles.chipTextActive,
-                  ]}
-                >
-                  {lugar.nombre}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+        {/* lista de solicitudes filtradas por estado/búsqueda y botón para exportar a csv */}
+        <ReportesSolicitudesCard
+          solicitudesFiltradasPorEstado={solicitudesFiltradasPorEstado}
+          busquedaSolicitud={busquedaSolicitud}
+          setBusquedaSolicitud={setBusquedaSolicitud}
+          filtroEstado={filtroEstado}
+          setFiltroEstado={setFiltroEstado}
+          accentColor={ACCENT}
+          onExportCSV={exportarCSV}
+          onSelectSolicitud={(s) => {
+            setSolicitudSeleccionada(s);
+            setModalVisible(true);
+          }}
+          toDate={toDate}
+          LUGARES_ENTREGA={LUGARES_ENTREGA}
+        />
 
-        {/* Destinos TOP  */}
-        {filtroDestino === "todos" && topDestinos.length > 0 && (
-          <View style={[styles.card, styles.cardElevated]}>
-            <View style={styles.cardHeaderRow}>
-              <Text style={styles.cardTitle}>Destinos con más solicitudes</Text>
-              <Text style={styles.cardSubtitle}>Top 5</Text>
-            </View>
-
-            {pieDataDestinos.length > 0 && (
-              <PieChart
-                data={pieDataDestinos}
-                width={screenWidth - 32}
-                height={220}
-                accessor="count"
-                backgroundColor="transparent"
-                paddingLeft="10"
-                chartConfig={{
-                  backgroundGradientFrom: "#FFFFFF",
-                  backgroundGradientTo: "#FFFFFF",
-                  color: () => ACCENT,
-                  labelColor: () => "#374151",
-                }}
-                absolute
-                hasLegend={false}
-                style={styles.chart}
-              />
-            )}
-
-            <View style={styles.legendContainer}>
-              {pieDataDestinos.map((d, idx) => (
-                <View key={idx} style={styles.legendItem}>
-                  <View
-                    style={[
-                      styles.legendColorDot,
-                      { backgroundColor: d.color },
-                    ]}
-                  />
-                  <Text style={styles.legendText}>
-                    {d.name} · <Text style={{ fontWeight: "700" }}>{d.count}</Text>
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* TOP INSUMOS */}
-        {topInsumos.length > 0 && (
-          <View style={[styles.card, styles.cardElevated]}>
-            <View style={styles.cardHeaderRow}>
-              <Text style={styles.cardTitle}>Insumos más solicitados</Text>
-              <Text style={styles.cardSubtitle}>Top 5</Text>
-            </View>
-
-            {topInsumos.map((i, idx) => (
-              <View key={i.id} style={styles.rowItem}>
-                <View style={styles.rowLeft}>
-                  <View style={[styles.indexCircle, { backgroundColor: "#F1F8F7" }]}>
-                    <Text style={[styles.indexCircleText, { color: ACCENT }]}>
-                      {idx + 1}
-                    </Text>
-                  </View>
-                  <Text style={styles.rowTitle}>{i.nombre}</Text>
-                </View>
-                <Text style={[styles.rowBadge, { color: ACCENT }]}>
-                  {i.totalCantidad} unid.
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* CONSUMO POR INSUMO */}
-        <View style={[styles.card, styles.cardElevated]}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>Consumo por insumo</Text>
-            <Feather name="search" size={18} color="#6B7280" />
-          </View>
-
-          <Text style={styles.helperText}>
-            Busca un insumo para ver su consumo en el periodo filtrado
-            {filtroDestino !== "todos" ? " para este destino." : "."}
-          </Text>
-
-          {/* BUSCADOR */}
-          <View style={[styles.searchRow, { backgroundColor: "#F6F9F8" }]}>
-            <AntDesign name="search" size={16} color="#9CA3AF" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Escribe el nombre del insumo"
-              placeholderTextColor="#9CA3AF"
-              value={insumoBusqueda}
-              onChangeText={(texto) => {
-                setInsumoBusqueda(texto);
-                if (!texto) setInsumoSeleccionadoId(null);
-              }}
-              selectionColor={ACCENT}
-            />
-
-            {insumoBusqueda.length > 0 && (
-              <TouchableOpacity
-                onPress={() => {
-                  setInsumoBusqueda("");
-                  setInsumoSeleccionadoId(null);
-                }}
-              >
-                <AntDesign name="closecircleo" size={16} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-          </View>
-          {/* LISTA DE INSUMOS */}
-          {insumosParaBusqueda.length > 0 && (
-            <View style={styles.insumosListaContainer}>
-              {insumosParaBusqueda.map((i) => {
-                const isSelected = insumoSeleccionadoId === i.id;
-
-                return (
-                  <TouchableOpacity
-                    key={i.id}
-                    style={[
-                      styles.insumoChip,
-                      isSelected && styles.insumoChipActive,
-                    ]}
-                    onPress={() => {
-                      if (isSelected) {
-                        setInsumoSeleccionadoId(null);
-                        setInsumoBusqueda("");
-                      } else {
-                        setInsumoSeleccionadoId(i.id);
-                        setInsumoBusqueda(i.nombre);
-                      }
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <View
-                        style={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 13,
-                          backgroundColor: "#E0F2F1",
-                          justifyContent: "center",
-                          alignItems: "center",
-                          marginRight: 10,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            fontWeight: "700",
-                            color: "#00BFA5",
-                          }}
-                        >
-                          {i.totalCantidad}
-                        </Text>
-                      </View>
-
-                      <Text
-                        style={[
-                          styles.insumoChipText,
-                          isSelected && styles.insumoChipTextActive,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {i.nombre}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-
-          {/* DETALLES DEL INSUMO */}
-          {insumoSeleccionadoId && insumoSeleccionadoDetalle && (
-            <View style={styles.consumoCard}>
-              <Text style={styles.consumoTitle}>
-                {insumoBusqueda || "Insumo seleccionado"}
-              </Text>
-
-              <View style={styles.consumoRow}>
-                <Text style={styles.consumoLabel}>Total solicitado:</Text>
-                <Text style={styles.consumoValue}>
-                  {insumoSeleccionadoDetalle.totalCantidad} unidades
-                </Text>
-              </View>
-
-              <View style={styles.consumoRow}>
-                <Text style={styles.consumoLabel}>Número de solicitudes:</Text>
-                <Text style={styles.consumoValue}>
-                  {insumoSeleccionadoDetalle.totalSolicitudes}
-                </Text>
-              </View>
-
-              <View style={styles.consumoRow}>
-                <Text style={styles.consumoLabel}>Promedio por día:</Text>
-                <Text style={styles.consumoValue}>
-                  {formatearPromedio(insumoSeleccionadoDetalle.promedioPorDia)}
-                </Text>
-              </View>
-
-              <View style={styles.consumoRow}>
-                <Text style={styles.consumoLabel}>Última solicitud:</Text>
-                <Text style={styles.consumoValue}>
-                  {formatearFechaCorta(insumoSeleccionadoDetalle.fechaUltima)}
-                </Text>
-              </View>
-
-              {insumoSeleccionadoDetalle.destinos.length > 0 && (
-                <>
-                  <Text style={[styles.consumoLabel, { marginTop: 8 }]}>
-                    Destinos que más lo solicitan:
-                  </Text>
-
-                  {insumoSeleccionadoDetalle.destinos
-                    .slice(0, 3)
-                    .map((d, idx) => (
-                      <Text key={idx} style={styles.consumoDestinoItem}>
-                        • {d.nombre} ({d.count} solicitudes)
-                      </Text>
-                    ))}
-                </>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* SOLICITUDES FILTRADAS */}
-        <View style={[styles.card, styles.cardElevated]}>
-          <Text style={styles.cardTitle}>Solicitudes filtradas</Text>
-          <Text style={styles.cardSubtitleSmall}>
-            {solicitudesFiltradasPorEstado.length} solicitudes en el periodo elegido
-          </Text>
-
-          {/* CHIPS */}
-          <View style={[styles.chipRow, { marginTop: 4 }]}>
-            {[
-              { id: "todas", label: "Todas" },
-              { id: "completadas", label: "Completadas" },
-              { id: "rechazadas", label: "Rechazadas" },
-            ].map((op) => (
-              <TouchableOpacity
-                key={op.id}
-                style={[
-                  styles.chip,
-                  filtroEstado === op.id && {
-                    ...styles.chipActive,
-                    backgroundColor: ACCENT,
-                  },
-                ]}
-                onPress={() => setFiltroEstado(op.id)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    filtroEstado === op.id && styles.chipTextActive,
-                  ]}
-                >
-                  {op.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* SI NO HAY SOLICITUDES */}
-          {solicitudesFiltradasPorEstado.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No se encontraron solicitudes con los filtros actuales.
-            </Text>
-          ) : (
-            solicitudesFiltradasPorEstado.map((s) => {
-              const fecha = toDate(s.fechaNecesaria ?? s.creadoEn);
-              const fechaTexto = fecha
-                ? `${fecha.toLocaleDateString("es-MX", {
-                    day: "2-digit",
-                    month: "short",
-                  })} · ${fecha.toLocaleTimeString("es-MX", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}`
-                : "Sin fecha";
-
-              const destinoNombre =
-                s.destino ||
-                LUGARES_ENTREGA.find((d) => d.id === s.destinoId)?.nombre ||
-                "Sin destino";
-
-              const numItems = (s.items || []).length;
-
-              return (
-                <View key={s.id} style={styles.solicitudItem}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.solicitudFecha}>{fechaTexto}</Text>
-                    <Text style={styles.solicitudDestino}>{destinoNombre}</Text>
-
-                    <Text style={styles.solicitudDetalle}>
-                      {numItems} insumo{s.items?.length === 1 ? "" : "s"}
-                    </Text>
-
-                    <View style={{ marginTop: 4 }}>
-                      <EstadoBadge estado={s.estado} />
-                    </View>
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </View>
-
+        {/* espacio al final para que no quede nada pegado al borde inferior */}
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      {/* modal que muestra el detalle de una solicitud seleccionada */}
+      <ReporteDetalleModal
+        visible={modalVisible}
+        onClose={cerrarModal}
+        solicitudSeleccionadaDetalle={solicitudSeleccionadaDetalle}
+      />
     </SafeAreaView>
   );
 };
@@ -737,242 +634,20 @@ const ReportesScreen = ({ navigation }) => {
 export default ReportesScreen;
 
 const styles = StyleSheet.create({
+  // estilo base de la pantalla
   screen: {
     flex: 1,
   },
+  // padding del contenido scrollable
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 28,
   },
+  // estilo del título principal
   title: {
     fontSize: 26,
     fontWeight: "800",
     marginBottom: 12,
-  },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
-  },
-  cardElevated: {
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  cardHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  cardSubtitle: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  cardSubtitleSmall: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginBottom: 8,
-  },
-  filterLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-    marginTop: 4,
-    marginBottom: 6,
-  },
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
-  },
-  chipActive: {},
-  chipText: {
-    fontSize: 13,
-    color: "#374151",
-  },
-  chipTextActive: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  rowItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 8,
-    alignItems: "center",
-  },
-  rowLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  indexCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-  indexCircleText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  rowTitle: {
-    fontSize: 14,
-    color: "#111827",
-    flexShrink: 1,
-  },
-  rowBadge: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  helperText: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginBottom: 8,
-  },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 8,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: "#111827",
-    paddingVertical: 0,
-  },
-  insumosListaContainer: {
-    marginTop: 6,
-    borderRadius: 12,
-    backgroundColor: "#FAFBFC",
-    paddingVertical: 6,
-    paddingHorizontal: 6,
-  },
-  insumoChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-  },
-  insumoChipActive: {},
-  insumoChipText: {
-    fontSize: 13,
-    color: "#111827",
-  },
-  insumoChipTextActive: {
-    fontWeight: "700",
-    color: "#00695C",
-  },
-  consumoCard: {
-    marginTop: 12,
-    borderRadius: 12,
-    backgroundColor: "#F7F8F9",
-    padding: 12,
-  },
-  consumoTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    marginBottom: 8,
-    color: "#111827",
-  },
-  consumoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  consumoLabel: {
-    fontSize: 13,
-    color: "#4B5563",
-  },
-  consumoValue: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  consumoDestinoItem: {
-    fontSize: 13,
-    color: "#374151",
-  },
-  emptyText: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: 8,
-  },
-  solicitudItem: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderColor: "#EEF2F5",
-  },
-  solicitudFecha: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  solicitudDestino: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  solicitudDetalle: {
-    fontSize: 13,
-    color: "#4B5563",
-  },
-  solicitudEstado: {
-    fontWeight: "700",
-    color: "#111827",
-  },
-
-  estadoBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    overflow: "hidden",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  chart: {
-    marginVertical: 10,
-    borderRadius: 14,
-  },
-  legendContainer: {
-    marginTop: 8,
-    alignItems: "flex-start",
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  legendColorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 10,
-  },
-  legendText: {
-    fontSize: 13,
-    color: "#374151",
   },
 });

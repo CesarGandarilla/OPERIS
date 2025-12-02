@@ -300,7 +300,7 @@ export default function MovimientosScreen() {
         {rol === "enfermero" && item.estado === "Problema" && (
           <View style={styles.botonesRow}>
             <TouchableOpacity
-              style={[styles.btn, { backgroundColor: "#10B981" }]}
+              style={[styles.btn, { backgroundColor: "#F59E0B" }]}
               onPress={() => cambiarEstado(item.id, "Lista")}
             >
               <Ionicons name="refresh" size={14} color="white" style={{ marginRight: 4 }} />
@@ -312,7 +312,7 @@ export default function MovimientosScreen() {
         {rol === "ceye" && item.estado === "Rechazada" && (
           <View style={styles.botonesRow}>
             <TouchableOpacity
-              style={[styles.btn, { backgroundColor: "#3B82F6" }]}
+              style={[styles.btn, { backgroundColor: "#EF4444" }]}
               onPress={() => cambiarEstado(item.id, "Pendiente")}
             >
               <Ionicons name="refresh" size={14} color="white" style={{ marginRight: 4 }} />

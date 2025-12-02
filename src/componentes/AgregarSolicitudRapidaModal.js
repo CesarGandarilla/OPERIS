@@ -71,6 +71,10 @@ export default function AgregarSolicitudRapidaModal({
     setErrores({ cantidad: "", insumo: "" });
   };
 
+  const eliminarItem = (index) => {
+  setItemsSeleccionados((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const agregarItem = () => {
     let huboError = false;
     const nuevos = { cantidad: "", insumo: "" };
@@ -255,19 +259,28 @@ export default function AgregarSolicitudRapidaModal({
                 </TouchableOpacity>
 
                 {/* Mostrar lista de los insumos agregados */}
-                {itemsSeleccionados.length > 0 && (
-                  <View style={{ marginTop: 15 }}>
-                    <Text style={{ fontWeight: "700", marginBottom: 5 }}>
-                      Insumos agregados:
-                    </Text>
-
+                <View style={styles.smallListContainer}>
+                  <ScrollView>
                     {itemsSeleccionados.map((item, index) => (
-                      <Text key={index}>
-                        • {item.nombre} — {item.cantidad}
-                      </Text>
-                    ))}
-                  </View>
-                )}
+                      <View key={index} style={styles.previewItem}>
+                        <Text>
+                          {item.nombre} × {item.cantidad}
+                       </Text>
+
+                       <TouchableOpacity onPress={() => eliminarItem(index)}>
+                          <Text style={styles.removeText}>Eliminar</Text>
+                        </TouchableOpacity>
+                      </View>
+                   ))}
+
+                    {itemsSeleccionados.length === 0 && (
+                     <View style={styles.item}>
+                       <Text>Aún no has añadido insumos.</Text>
+                      </View>
+                   )}
+                 </ScrollView>
+                </View>
+
 
                 {/* Botón final para enviar la solicitud */}
                 <TouchableOpacity
@@ -310,6 +323,19 @@ export default function AgregarSolicitudRapidaModal({
 }
 
 const styles = StyleSheet.create({
+  previewItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 10,
+    borderBottomWidth: 1,
+    borderColor: "#EEE",
+  },
+
+  removeText: {
+    color: "red",
+    fontWeight: "600",
+  },
+  
   overlay: {
     flex: 1,
     width: "100%",

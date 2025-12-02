@@ -34,7 +34,7 @@ export const kits = [
     id: "kit-colecistectomia",
     nombre: "Kit Colecistectomía",
     items: [
-      { nombre: "Sutura vicryl calibre 2-0", cantidad: 2 },
+      { nombre: "Sutura Vicryl calibre 2-0", cantidad: 2 },
       { nombre: "Sutura seda calibre 3-0", cantidad: 2 },
       { nombre: "Gasas estériles", cantidad: 10 },
       { nombre: "Bisturí #11", cantidad: 1 }
@@ -53,8 +53,8 @@ export const kits = [
     id: "kit-laceracion",
     nombre: "Kit Reparación de laceración",
     items: [
-      { nombre: "Sutura nylon calibre 4-0", cantidad: 2 },
-      { nombre: "Jeringa 5 mL", cantidad: 1 },
+      { nombre: "Sutura Nylon calibre 4-0", cantidad: 2 },
+      { nombre: "Jeringa 5 ml", cantidad: 1 },
       { nombre: "Gasas estériles", cantidad: 4 }
     ]
   }

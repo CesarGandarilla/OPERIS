@@ -21,11 +21,16 @@ import AgregarSolicitudModal from "../componentes/AgregarSolicitudModal";
 import AgregarSolicitudRapidaModal from "../componentes/AgregarSolicitudRapidaModal";
 import SolicitudCard from "../componentes/SolicitudCard";
 import { getInventario } from "../firebase/firebaseApi";
-import { listenSolicitudes, updateSolicitud, createSolicitud } from "../firebase/firebaseApi";
+import {
+  listenSolicitudes,
+  updateSolicitud,
+  createSolicitud,
+} from "../firebase/firebaseApi";
 import { useAuth } from "../auth/AuthContext";
 import { getDateFromField } from "../utils/fechaUtils";
+import KitEditModal from "../componentes/KitEditModal";
 
-//KITS IMPORTADOS
+// KITS IMPORTADOS
 import { kits } from "../constants/kits";
 import { MaterialIcons } from "@expo/vector-icons";
 
@@ -40,6 +45,9 @@ export default function SolicitudesScreen() {
   const [modalElaboradaVisible, setModalElaboradaVisible] = useState(false);
   const [modalRapidaVisible, setModalRapidaVisible] = useState(false);
   const [selectorVisible, setSelectorVisible] = useState(false);
+
+  const [kitSeleccionado, setKitSeleccionado] = useState(null);
+  const [modalKitVisible, setModalKitVisible] = useState(false);
 
   const INK = tema?.colores?.ink || "#111827";
 
@@ -62,7 +70,7 @@ export default function SolicitudesScreen() {
     }, [route.params?.abrirSelector, rol, navigation])
   );
 
-  // Crear solicitud elaborada
+  // ---- CREAR SOLICITUD ELABORADA ----
   const crearSolicitud = async (solicitudData) => {
     try {
       const inventario = await getInventario();
@@ -77,8 +85,8 @@ export default function SolicitudesScreen() {
 
         if (item.cantidad > itemInv.stock) {
           Alert.alert(
-            "Cantidad inválida",
-            `Solo hay ${itemInv.stock} unidades de ${item.nombre} en inventario.`
+            "Stock insuficiente",
+            `Solo hay ${itemInv.stock} unidades de ${item.nombre}.`
           );
           return;
         }
@@ -101,7 +109,7 @@ export default function SolicitudesScreen() {
     }
   };
 
-  // Crear solicitud rápida
+  // ---- CREAR SOLICITUD RÁPIDA ----
   const crearSolicitudRapida = async (solicitud) => {
     try {
       const inventario = await getInventario();
@@ -117,7 +125,7 @@ export default function SolicitudesScreen() {
         if (item.cantidad > itemInv.stock) {
           Alert.alert(
             "Cantidad inválida",
-            `Solo hay ${itemInv.stock} unidades de ${item.nombre} en inventario.`
+            `Solo hay ${itemInv.stock} unidades de ${item.nombre}.`
           );
           return;
         }
@@ -133,55 +141,99 @@ export default function SolicitudesScreen() {
     }
   };
 
-  // CREAR SOLICITUD DESDE KIT
-  const crearSolicitudDesdeKit = async (kit) => {
-    try {
-      const solicitudData = {
-        usuario,
-        rol,
-        estado: "Pendiente",
-        creadoEn: Date.now(),
-        tipo: "elaborada",
-        items: kit.items.map((i) => ({
-          nombre: i.nombre,
-          cantidad: i.cantidad,
-        })),
-        nota: `Solicitud generada desde kit: ${kit.nombre}`,
+  // ---- CREAR SOLICITUD DESDE KIT (FINAL DESPUÉS DE EDITAR)----
+      // Reemplaza la función anterior por esta versión tolerante y sanitizadora.
+      const crearSolicitudDesdeKitEditado = async (maybeItemsOrPayload, maybeNota) => {
+        try {
+          // Acepta dos firmas:
+          // a) crearSolicitudDesdeKitEditado(itemsArray, nota)
+          // b) crearSolicitudDesdeKitEditado({ items: itemsArray, nota: '...' })
+          let items = [];
+          let nota = "";
+
+          if (Array.isArray(maybeItemsOrPayload)) {
+            items = maybeItemsOrPayload;
+            nota = maybeNota || "";
+          } else if (maybeItemsOrPayload && typeof maybeItemsOrPayload === "object") {
+            items = Array.isArray(maybeItemsOrPayload.items)
+              ? maybeItemsOrPayload.items
+              : [];
+            nota = maybeItemsOrPayload.nota || maybeItemsOrPayload.nombre || "";
+          } else {
+            // nada válido recibido
+            Alert.alert("Error", "No se recibieron items para la solicitud.");
+            return;
+          }
+
+          // Asegurarse de que items sea un array y que cada elemento sea un objeto simple
+          const itemsLimpios = items
+            .filter(Boolean) // quitar null/undefined
+            .map((it) => {
+              // Si el item ya tiene la forma esperada (insumoId / nombre / cantidad), respetarlo, pero normalizar tipos.
+              return {
+                insumoId: it.insumoId || it.id || null,
+                nombre: String(it.nombre || it.nombre?.toString() || ""),
+                cantidad: Number(it.cantidad || it.cant || 1),
+                urgente: Boolean(it.urgente || false),
+                comentario: String(it.comentario || ""),
+              };
+            });
+
+          if (!Array.isArray(itemsLimpios) || itemsLimpios.length === 0) {
+            Alert.alert("Error", "El kit no contiene insumos válidos para solicitar.");
+            return;
+          }
+
+          const solicitudData = {
+            usuario,
+            rol,
+            estado: "Pendiente",
+            creadoEn: Date.now(),
+            tipo: "elaborada", // o "kit" si prefieres diferenciar: "kit"
+            items: itemsLimpios,
+            nota: nota || `Solicitud generada desde kit: ${kitSeleccionado?.nombre || ""}`,
+          };
+
+          // Validar contra inventario (usa getInventario como ya tenías)
+          const inventario = await getInventario();
+
+          for (const item of itemsLimpios) {
+            const itemInv = inventario.find((i) => i.nombre === item.nombre);
+
+            if (!itemInv) {
+              Alert.alert("Error", `El item ${item.nombre} no existe en inventario.`);
+              return;
+            }
+
+            if (item.cantidad > itemInv.stock) {
+              Alert.alert(
+                "Stock insuficiente",
+                `Solo hay ${itemInv.stock} unidades de ${item.nombre}.`
+              );
+              return;
+            }
+          }
+
+          // Crear solicitud (createSolicitud ya maneja escritura en Realtime DB)
+          await createSolicitud(solicitudData);
+
+          Alert.alert("Solicitud enviada", "Se creó correctamente la solicitud del kit.");
+          setModalKitVisible(false);
+        } catch (error) {
+          console.error("Error creando solicitud desde kit:", error);
+          Alert.alert("Error", "No se pudo crear la solicitud desde el kit.");
+        }
       };
 
-      const inventario = await getInventario();
 
-      for (const item of solicitudData.items) {
-        const itemInv = inventario.find((i) => i.nombre === item.nombre);
 
-        if (!itemInv) {
-          Alert.alert("Error", `El item ${item.nombre} no existe en inventario.`);
-          return;
-        }
-
-        if (item.cantidad > itemInv.stock) {
-          Alert.alert(
-            "Stock insuficiente",
-            `Solo hay ${itemInv.stock} unidades de ${item.nombre}.`
-          );
-          return;
-        }
-      }
-
-      await createSolicitud(solicitudData);
-      Alert.alert("Kit agregado", `Se generó una solicitud para ${kit.nombre}`);
-    } catch (e) {
-      console.error("Error creando solicitud desde kit", e);
-      Alert.alert("Error", "No se pudo crear la solicitud del kit.");
-    }
-  };
-
-  // Listener
+  // ---- LISTENER ----
   useEffect(() => {
     const unsub = listenSolicitudes((data) => setSolicitudes(data));
     return () => unsub();
   }, []);
 
+  // ---- FILTROS ----
   const solicitudesActivas = solicitudes.filter((s) => {
     if (rol === "ceye") {
       return ["Pendiente", "Aceptada"].includes(s.estado);
@@ -218,7 +270,7 @@ export default function SolicitudesScreen() {
     return (b.creadoEn || 0) - (a.creadoEn || 0);
   });
 
-  // Acciones CEYE
+  // ---- ACCIONES CEYE ----
   const aceptar = (id) => updateSolicitud(id, { estado: "Aceptada" });
 
   const rechazar = async (id) => {
@@ -258,28 +310,15 @@ export default function SolicitudesScreen() {
     }
   };
 
-  const confirmarRechazo = async (id) => {
-    try {
-      await updateSolicitud(id, {
-        rechazoConfirmado: true,
-        estadoAnterior: null,
-        fechaRechazo: null,
-        estado: "Rechazada",
-      });
+  const confirmarRechazo = (id) =>
+    updateSolicitud(id, {
+      rechazoConfirmado: true,
+      estadoAnterior: null,
+      fechaRechazo: null,
+      estado: "Rechazada",
+    });
 
-      Alert.alert("Confirmado", "El rechazo fue confirmado.");
-    } catch (e) {
-      console.error("Error confirmando rechazo:", e);
-    }
-  };
-
-  const marcarLista = async (id) => {
-    try {
-      await updateSolicitud(id, { estado: "Lista" });
-    } catch (e) {
-      console.error("Error marcar lista:", e);
-    }
-  };
+  const marcarLista = (id) => updateSolicitud(id, { estado: "Lista" });
 
   const verificarOk = async (id) => {
     try {
@@ -307,6 +346,7 @@ export default function SolicitudesScreen() {
 
   const verificarNo = (id) => updateSolicitud(id, { estado: "Problema" });
 
+  // ---- RENDER CARD ----
   const renderItem = ({ item }) => (
     <SolicitudCard
       item={item}
@@ -322,17 +362,21 @@ export default function SolicitudesScreen() {
     />
   );
 
+  // ==========================================================
+  // ====================== RENDER =============================
+  // ==========================================================
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
-
         {/* HEADER */}
         <View style={styles.header}>
           <View>
             <Text style={[styles.title, { color: INK }]}>Solicitudes</Text>
             <Text style={styles.headerSubtitle}>
               {solicitudesOrdenadas.length}{" "}
-              {solicitudesOrdenadas.length === 1 ? "solicitud" : "solicitudes"}
+              {solicitudesOrdenadas.length === 1
+                ? "solicitud"
+                : "solicitudes"}
               {rol !== "ceye" && modoFiltro === "Hoy" ? " para hoy" : ""}
             </Text>
           </View>
@@ -347,40 +391,43 @@ export default function SolicitudesScreen() {
           )}
         </View>
 
-        {/* SCROLL HORIZONTAL DE KITS */}
+        {/* KITS */}
         {rol === "enfermero" && (
-            <View style={{ height: 120, marginBottom: 10 }}>
-              <FlatList
-                data={kits}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={{ paddingRight: 10 }}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    onPress={() => crearSolicitudDesdeKit(item)}
-                    style={styles.kitCard}
-                  >
-                    <View style={styles.kitIcon}>
-                      <MaterialIcons
-                        name="medical-services"
-                        size={24}
-                        color="#00BFA5"
-                      />
-                    </View>
+          <View style={{ height: 120, marginBottom: 10 }}>
+            <FlatList
+              data={kits}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingRight: 10 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => {
+                    setKitSeleccionado(item);
+                    setModalKitVisible(true);
+                  }}
+                  style={styles.kitCard}
+                >
+                  <View style={styles.kitIcon}>
+                    <MaterialIcons
+                      name="medical-services"
+                      size={24}
+                      color="#00BFA5"
+                    />
+                  </View>
 
-                    <Text style={styles.kitTitle} numberOfLines={1}>
-                      {item.nombre}
-                    </Text>
+                  <Text style={styles.kitTitle} numberOfLines={1}>
+                    {item.nombre}
+                  </Text>
 
-                    <Text style={styles.kitSubtitle}>
-                      {item.items.length} items
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              />
-            </View>
-          )}
+                  <Text style={styles.kitSubtitle}>
+                    {item.items.length} items
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        )}
 
         {/* LISTA */}
         <FlatList
@@ -441,6 +488,14 @@ export default function SolicitudesScreen() {
           rol={rol}
           onEnviar={crearSolicitudRapida}
         />
+
+        {/* MODAL KIT */}
+        <KitEditModal
+          visible={modalKitVisible}
+          onClose={() => setModalKitVisible(false)}
+          kit={kitSeleccionado}
+          onEnviar={crearSolicitudDesdeKitEditado}
+        />
       </View>
     </SafeAreaView>
   );
@@ -496,7 +551,7 @@ const styles = StyleSheet.create({
   selectorCancel: { marginTop: 8 },
   selectorCancelText: { textAlign: "center", color: "red" },
 
-  // ESTILOS DE LOS KITS
+  // KITS
   kitCard: {
     width: 160,
     height: 100,

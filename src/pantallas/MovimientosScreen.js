@@ -6,13 +6,14 @@ import {
   FlatList,
   TextInput,
   StyleSheet,
+  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRoute } from "@react-navigation/native";   // 👈 nuevo
+import { useRoute } from "@react-navigation/native";
+import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
 import { listenSolicitudes } from "../firebase/firebaseApi";
 import { getDateFromField, formatFechaNecesaria } from "../utils/fechaUtils";
-import FiltroChips from "../componentes/FiltroChips";
 import { tema } from "../tema";
 
 // Colores limpios e iOS
@@ -38,17 +39,75 @@ const getColor = (estado) => {
   }
 };
 
+/** Dropdown genérico para filtros */
+function DropdownFiltro({ label, value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <View style={styles.filtrosSection}>
+      <Text style={styles.filtroLabel}>{label}</Text>
+
+      <TouchableOpacity
+        style={styles.dropdownButton}
+        onPress={() => setOpen((prev) => !prev)}
+        activeOpacity={0.8}
+      >
+        <Text
+          style={[
+            styles.dropdownValue,
+            !value && styles.dropdownPlaceholder,
+          ]}
+          numberOfLines={1}
+        >
+          {value || "Selecciona..."}
+        </Text>
+        <Feather
+          name={open ? "chevron-up" : "chevron-down"}
+          size={16}
+          color="#6B7280"
+        />
+      </TouchableOpacity>
+
+      {open && (
+        <View style={styles.dropdownOptions}>
+          {options.map((op) => (
+            <TouchableOpacity
+              key={op}
+              style={styles.dropdownOption}
+              onPress={() => {
+                onChange(op);
+                setOpen(false);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.dropdownOptionText,
+                  op === value && styles.dropdownOptionTextActivo,
+                ]}
+              >
+                {op}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function MovimientosScreen() {
   const route = useRoute();
   const { user } = useAuth();
   const usuario = user?.profile?.email;
   const rol = user?.profile?.role?.toLowerCase();
 
-  // 👇 leemos el estado inicial que viene del panel (ej. "Problema", "Verificada")
+  // estado inicial que viene del panel (ej. "Problema", "Verificada")
   const estadoInicial = route.params?.estadoInicial || "Todos";
 
   const [solicitudes, setSolicitudes] = useState([]);
-  const [filtro, setFiltro] = useState(estadoInicial);
+  const [filtro, setFiltro] = useState(estadoInicial);      // filtro por estado
+  const [filtroFecha, setFiltroFecha] = useState("Todos");  // filtro por fecha
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -66,6 +125,15 @@ export default function MovimientosScreen() {
     "Lista",
     "Verificada",
     "Problema",
+  ];
+
+  // OPCIONES DE FECHA
+  const filtrosFecha = [
+    "Todos",
+    "Hoy",
+    "Últimos 3 días",
+    "Última semana",
+    "Último mes",
   ];
 
   useEffect(() => {
@@ -91,9 +159,47 @@ export default function MovimientosScreen() {
       ? movimientosUser
       : movimientosUser.filter((s) => s.estado === filtro);
 
-  // Filtrar por texto
+  // Filtrar por fecha de creación
+  const inicioDeHoy = new Date();
+  inicioDeHoy.setHours(0, 0, 0, 0);
+
+  const movimientosFecha = movimientosEstado.filter((s) => {
+    if (filtroFecha === "Todos") return true;
+
+    const fecha = getDateFromField(s.creadoEn);
+    if (!fecha) return false; // si no tiene fecha, no entra en filtros específicos
+
+    // normalizamos la fecha del movimiento al inicio del día
+    const fechaDia = new Date(fecha);
+    fechaDia.setHours(0, 0, 0, 0);
+
+    const limite = new Date();
+    limite.setHours(0, 0, 0, 0);
+
+    switch (filtroFecha) {
+      case "Hoy":
+        return fechaDia.getTime() === inicioDeHoy.getTime();
+
+      case "Últimos 3 días":
+        limite.setDate(limite.getDate() - 2); // hoy + 2 días atrás = 3 días contando hoy
+        return fechaDia >= limite && fechaDia <= inicioDeHoy;
+
+      case "Última semana":
+        limite.setDate(limite.getDate() - 6); // 7 días contando hoy
+        return fechaDia >= limite && fechaDia <= inicioDeHoy;
+
+      case "Último mes":
+        limite.setDate(limite.getDate() - 29); // 30 días contando hoy
+        return fechaDia >= limite && fechaDia <= inicioDeHoy;
+
+      default:
+        return true;
+    }
+  });
+
+  // Filtrar por texto (sobre lo ya filtrado por estado + fecha)
   const searchLower = search.toLowerCase();
-  const movimientosFiltrados = movimientosEstado.filter((s) => {
+  const movimientosFiltrados = movimientosFecha.filter((s) => {
     const usuarioStr = (s.usuario || "").toLowerCase();
     const itemsStr = (s.items || [])
       .map((i) => i.nombre?.toLowerCase() || "")
@@ -206,14 +312,21 @@ export default function MovimientosScreen() {
           onChangeText={setSearch}
         />
 
-        {/* Filtro de estados (iOS) */}
-        <View style={{ marginBottom: 6 }}>
-          <FiltroChips
-            opciones={estados.map((e) => ({ id: e, label: e }))}
-            valorSeleccionado={filtro}
-            onChange={setFiltro}
-          />
-        </View>
+        {/* Filtro de estados */}
+        <DropdownFiltro
+          label="Estado"
+          value={filtro}
+          options={estados}
+          onChange={setFiltro}
+        />
+
+        {/* Filtro por fecha */}
+        <DropdownFiltro
+          label="Fecha"
+          value={filtroFecha}
+          options={filtrosFecha}
+          onChange={setFiltroFecha}
+        />
 
         {loading ? (
           <Text style={styles.loadingText}>Cargando...</Text>
@@ -247,7 +360,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: "800",
-    marginBottom: 10,
+    marginBottom: 8,
     color: INK,
   },
 
@@ -255,9 +368,64 @@ const styles = StyleSheet.create({
     backgroundColor: "#F2F2F6",
     borderRadius: 12,
     padding: 10,
-    marginBottom: 10,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: "#E5E7EB",
+  },
+
+  // sección de filtros
+  filtrosSection: {
+    marginBottom: 8,
+  },
+
+  filtroLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+    marginBottom: 4,
+    marginLeft: 2,
+  },
+
+  // dropdown
+  dropdownButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  dropdownValue: {
+    fontSize: 13,
+    color: INK,
+    flex: 1,
+    marginRight: 6,
+  },
+  dropdownPlaceholder: {
+    color: "#9CA3AF",
+  },
+  dropdownOptions: {
+    marginTop: 4,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    overflow: "hidden",
+  },
+  dropdownOption: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  dropdownOptionText: {
+    fontSize: 13,
+    color: "#4B5563",
+  },
+  dropdownOptionTextActivo: {
+    fontWeight: "600",
+    color: INK,
   },
 
   /* TARJETAS iOS */

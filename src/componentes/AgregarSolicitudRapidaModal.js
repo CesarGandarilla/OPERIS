@@ -231,26 +231,12 @@ export default function AgregarSolicitudRapidaModal({
                   <Switch value={urgente} onValueChange={setUrgente} />
                 </View>
 
-                {/* Comentario */}
-                <Text style={[styles.label, { marginTop: 10 }]}>
-                  Comentario (opcional)
-                </Text>
-                <TextInput
-                  placeholder="Detalle breve"
-                  style={[
-                    styles.input,
-                    { minHeight: 60, textAlignVertical: "top" },
-                  ]}
-                  value={comentario}
-                  onChangeText={setComentario}
-                  multiline
-                  placeholderTextColor="#999"
-                />
+               
 
                 {/* Botón de agregar insumo */}
                 <TouchableOpacity
                   style={{
-                    backgroundColor: "#4CAF50",
+                    backgroundColor: "#00BFA5",
                     padding: 12,
                     borderRadius: 8,
                     marginTop: 10,
@@ -286,7 +272,7 @@ export default function AgregarSolicitudRapidaModal({
                 {/* Botón final para enviar la solicitud */}
                 <TouchableOpacity
                   style={{
-                    backgroundColor: tema.colorPrincipal || "#00BFA5",
+                    backgroundColor: tema.colorPrincipal || "#027868ff",
                     padding: 15,
                     borderRadius: 8,
                     marginTop: 20,

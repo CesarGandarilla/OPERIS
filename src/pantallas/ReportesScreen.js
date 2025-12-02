@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 28,
   },
-  // estilo del título principal
+  // estilo del título principal.
   title: {
     fontSize: 26,
     fontWeight: "800",

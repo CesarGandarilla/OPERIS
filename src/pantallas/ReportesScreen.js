@@ -158,53 +158,58 @@ const ReportesScreen = () => {
 
   // ================== TOP INSUMOS ==================
   // aquí generamos el top de insumos más solicitados en el rango y destino seleccionados
+  // AGRUPANDO por nombre normalizado para evitar duplicados visuales
   const topInsumos = useMemo(() => {
-    const conteo = {};
+    const conteoPorNombre = {};
+
     solicitudesFiltradas.forEach((s) => {
       (s.items || []).forEach((item) => {
-        const id = item.insumoId || item.nombre || "sin-id";
-        const nombre = item.nombre || "Sin nombre";
+        const nombreOriginal = (item.nombre || "Sin nombre").trim();
+        const nombreClave = normalizeText(nombreOriginal) || "sin-nombre";
         const cantidad = item.cantidad ?? 0;
 
-        // si el insumo no está en el objeto, lo inicializamos
-        if (!conteo[id]) {
-          conteo[id] = { id, nombre, totalCantidad: 0, totalSolicitudes: 0 };
+        if (!conteoPorNombre[nombreClave]) {
+          conteoPorNombre[nombreClave] = {
+            id: nombreClave, // usamos la clave normalizada como id local
+            nombre: nombreOriginal,
+            totalCantidad: 0,
+            totalSolicitudes: 0,
+          };
         }
-        // sumamos cantidades y contamos cuántas solicitudes lo incluyen
-        conteo[id].totalCantidad += cantidad;
-        conteo[id].totalSolicitudes += 1;
+
+        conteoPorNombre[nombreClave].totalCantidad += cantidad;
+        conteoPorNombre[nombreClave].totalSolicitudes += 1;
       });
     });
 
-    // convertimos el objeto en arreglo y lo ordenamos por cantidad total pedida
-    const listado = Object.values(conteo);
+    const listado = Object.values(conteoPorNombre);
     listado.sort((a, b) => b.totalCantidad - a.totalCantidad);
-    // regresamos solo el top 5
     return listado.slice(0, 5);
   }, [solicitudesFiltradas]);
 
   // ================== AGREGADOS POR INSUMO ==================
   // este mapa guarda los totales por insumo para usarlo tanto en lista como en detalle
+  // también agrupamos por nombre normalizado
   const insumosAggregados = useMemo(() => {
     const mapa = {};
     solicitudesFiltradas.forEach((s) => {
       (s.items || []).forEach((item) => {
-        const id = item.insumoId || item.nombre || "sin-id";
-        const nombre = item.nombre || "Sin nombre";
+        const nombreOriginal = (item.nombre || "Sin nombre").trim();
+        const clave = normalizeText(nombreOriginal) || "sin-nombre";
         const cantidad = item.cantidad ?? 0;
 
         // si no existe el insumo en el mapa, lo creamos
-        if (!mapa[id]) {
-          mapa[id] = {
-            id,
-            nombre,
+        if (!mapa[clave]) {
+          mapa[clave] = {
+            id: clave, // id = nombre normalizado, sirve como key estable
+            nombre: nombreOriginal,
             totalCantidad: 0,
             totalSolicitudes: 0,
           };
         }
         // sumamos cantidad y número de solicitudes donde aparece
-        mapa[id].totalCantidad += cantidad;
-        mapa[id].totalSolicitudes += 1;
+        mapa[clave].totalCantidad += cantidad;
+        mapa[clave].totalSolicitudes += 1;
       });
     });
     return mapa;
@@ -230,6 +235,7 @@ const ReportesScreen = () => {
 
   // ================== DETALLE INSUMO ==================
   // aquí calculamos datos detallados del insumo seleccionado (total, destinos, fechas, promedio por día)
+  // usando también la clave de nombre normalizado
   const insumoSeleccionadoDetalle = useMemo(() => {
     if (!insumoSeleccionadoId) return null;
 
@@ -242,17 +248,20 @@ const ReportesScreen = () => {
     // recorremos las solicitudes filtradas para ver en cuáles aparece el insumo
     solicitudesFiltradas.forEach((s) => {
       const items = s.items || [];
-      const contiene = items.some(
-        (it) =>
-          (it.insumoId || it.nombre || "sin-id") === insumoSeleccionadoId
-      );
+
+      const contiene = items.some((it) => {
+        const nombreOriginal = (it.nombre || "").trim();
+        const clave = normalizeText(nombreOriginal) || "sin-nombre";
+        return clave === insumoSeleccionadoId;
+      });
 
       if (!contiene) return;
 
       // sumamos la cantidad del insumo en esa solicitud
       items.forEach((it) => {
-        const id = it.insumoId || it.nombre || "sin-id";
-        if (id === insumoSeleccionadoId) {
+        const nombreOriginal = (it.nombre || "").trim();
+        const clave = normalizeText(nombreOriginal) || "sin-nombre";
+        if (clave === insumoSeleccionadoId) {
           totalCantidad += it.cantidad ?? 0;
         }
       });

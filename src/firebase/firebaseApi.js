@@ -297,3 +297,22 @@ export async function getInventario() {
     return [];
   }
 }
+
+// 🔵 Actualizar estado de la solicitud
+
+const db = getDatabase(firebaseApp);
+
+export async function updateSolicitudEstado(id, nuevoEstado) {
+  try {
+    const solicitudRef = ref(db, `solicitudes/${id}`);
+
+    await update(solicitudRef, {
+      estado: nuevoEstado,
+      actualizadoEn: Date.now(),
+    });
+
+    console.log("Estado actualizado", id, nuevoEstado);
+  } catch (error) {
+    console.error("❌ Error actualizando estado:", error);
+  }
+}

@@ -13,6 +13,7 @@ import { useRoute } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
 import { listenSolicitudes } from "../firebase/firebaseApi";
+import { updateSolicitudEstado } from "../firebase/firebaseApi";   // 🔵 AGREGADO
 import { getDateFromField, formatFechaNecesaria } from "../utils/fechaUtils";
 import { tema } from "../tema";
 
@@ -102,21 +103,18 @@ export default function MovimientosScreen() {
   const usuario = user?.profile?.email;
   const rol = user?.profile?.role?.toLowerCase();
 
-  // estado inicial que viene del panel (ej. "Problema", "Verificada")
   const estadoInicial = route.params?.estadoInicial || "Todos";
 
   const [solicitudes, setSolicitudes] = useState([]);
-  const [filtro, setFiltro] = useState(estadoInicial);      // filtro por estado
-  const [filtroFecha, setFiltroFecha] = useState("Todos");  // filtro por fecha
+  const [filtro, setFiltro] = useState(estadoInicial);
+  const [filtroFecha, setFiltroFecha] = useState("Todos");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // si cambian los params (por ejemplo, vienes del panel con otro estado) actualizamos el filtro
   useEffect(() => {
     setFiltro(estadoInicial);
   }, [estadoInicial]);
 
-  // ESTADOS DEL FILTRO
   const estados = [
     "Todos",
     "Pendiente",
@@ -127,7 +125,6 @@ export default function MovimientosScreen() {
     "Problema",
   ];
 
-  // OPCIONES DE FECHA
   const filtrosFecha = [
     "Todos",
     "Hoy",
@@ -153,13 +150,11 @@ export default function MovimientosScreen() {
       ? solicitudes
       : solicitudes.filter((s) => s.usuario === usuario);
 
-  // Filtrar por estado
   const movimientosEstado =
     filtro === "Todos"
       ? movimientosUser
       : movimientosUser.filter((s) => s.estado === filtro);
 
-  // Filtrar por fecha de creación
   const inicioDeHoy = new Date();
   inicioDeHoy.setHours(0, 0, 0, 0);
 
@@ -167,9 +162,8 @@ export default function MovimientosScreen() {
     if (filtroFecha === "Todos") return true;
 
     const fecha = getDateFromField(s.creadoEn);
-    if (!fecha) return false; // si no tiene fecha, no entra en filtros específicos
+    if (!fecha) return false;
 
-    // normalizamos la fecha del movimiento al inicio del día
     const fechaDia = new Date(fecha);
     fechaDia.setHours(0, 0, 0, 0);
 
@@ -179,25 +173,20 @@ export default function MovimientosScreen() {
     switch (filtroFecha) {
       case "Hoy":
         return fechaDia.getTime() === inicioDeHoy.getTime();
-
       case "Últimos 3 días":
-        limite.setDate(limite.getDate() - 2); // hoy + 2 días atrás = 3 días contando hoy
+        limite.setDate(limite.getDate() - 2);
         return fechaDia >= limite && fechaDia <= inicioDeHoy;
-
       case "Última semana":
-        limite.setDate(limite.getDate() - 6); // 7 días contando hoy
+        limite.setDate(limite.getDate() - 6);
         return fechaDia >= limite && fechaDia <= inicioDeHoy;
-
       case "Último mes":
-        limite.setDate(limite.getDate() - 29); // 30 días contando hoy
+        limite.setDate(limite.getDate() - 29);
         return fechaDia >= limite && fechaDia <= inicioDeHoy;
-
       default:
         return true;
     }
   });
 
-  // Filtrar por texto (sobre lo ya filtrado por estado + fecha)
   const searchLower = search.toLowerCase();
   const movimientosFiltrados = movimientosFecha.filter((s) => {
     const usuarioStr = (s.usuario || "").toLowerCase();
@@ -214,6 +203,14 @@ export default function MovimientosScreen() {
       cirugiaStr.includes(searchLower)
     );
   });
+
+  // --------------------------------------------------------
+  // 🔵 ACCIÓN NUEVA: ACTUALIZAR ESTADO
+  // --------------------------------------------------------
+  async function cambiarEstado(id, nuevoEstado) {
+    await updateSolicitudEstado(id, nuevoEstado);
+  }
+  // --------------------------------------------------------
 
   const renderItem = ({ item }) => {
     const fechaNecesariaTexto = formatFechaNecesaria(item.fechaNecesaria);
@@ -238,7 +235,6 @@ export default function MovimientosScreen() {
             Solicitud de {item.usuario || "Desconocido"}
           </Text>
 
-          {/* Badge de estado estilo iOS */}
           <View
             style={[
               styles.estadoBadge,
@@ -262,7 +258,6 @@ export default function MovimientosScreen() {
           </View>
         </View>
 
-        {/* Destino y cirugía */}
         {(item.destino || item.cirugia) && (
           <View style={{ marginTop: 4 }}>
             {item.destino && (
@@ -274,14 +269,12 @@ export default function MovimientosScreen() {
           </View>
         )}
 
-        {/* Fecha necesaria */}
         {fechaNecesariaTexto && (
           <Text style={styles.fechaNecesaria}>
             Necesario: {fechaNecesariaTexto}
           </Text>
         )}
 
-        {/* Items */}
         <View style={styles.itemsContainer}>
           {item.items?.map((i, idx) => (
             <Text key={idx} style={styles.item}>
@@ -290,10 +283,35 @@ export default function MovimientosScreen() {
           ))}
         </View>
 
-        {/* Fecha */}
         <Text style={styles.fechaCreacion}>
           Creado: {fechaCreacionTexto}
         </Text>
+
+        {/* ---------------------------------- */}
+        {/* 🔵 BOTONES DE CAMBIO DE ESTADO    */}
+        {/* ---------------------------------- */}
+        {rol === "ceye" && (
+          <View style={styles.botonesRow}>
+            {item.estado === "Rechazada" && (
+              <TouchableOpacity
+                style={[styles.btn, { backgroundColor: "#9CA3AF" }]}
+                onPress={() => cambiarEstado(item.id, "Pendiente")}
+              >
+                <Text style={styles.btnText}>Reabrir</Text>
+             </TouchableOpacity>
+            )}
+
+            
+            {item.estado === "Problema" && (
+              <TouchableOpacity
+                style={[styles.btn, { backgroundColor: "#F59E0B" }]}
+                onPress={() => cambiarEstado(item.id, "Pendiente")}
+              >
+                <Text style={styles.btnText}>Reabrir</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -301,10 +319,8 @@ export default function MovimientosScreen() {
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
-        {/* Título */}
         <Text style={styles.title}>Movimientos</Text>
 
-        {/* Búsqueda */}
         <TextInput
           placeholder="Buscar usuario, insumo, destino o cirugía..."
           style={styles.searchBar}
@@ -312,7 +328,6 @@ export default function MovimientosScreen() {
           onChangeText={setSearch}
         />
 
-        {/* Filtro de estados */}
         <DropdownFiltro
           label="Estado"
           value={filtro}
@@ -320,7 +335,6 @@ export default function MovimientosScreen() {
           onChange={setFiltro}
         />
 
-        {/* Filtro por fecha */}
         <DropdownFiltro
           label="Fecha"
           value={filtroFecha}
@@ -373,7 +387,6 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
 
-  // sección de filtros
   filtrosSection: {
     marginBottom: 8,
   },
@@ -386,7 +399,6 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  // dropdown
   dropdownButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -428,7 +440,6 @@ const styles = StyleSheet.create({
     color: INK,
   },
 
-  /* TARJETAS iOS */
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 14,
@@ -503,6 +514,24 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 11,
     color: "#9CA3AF",
+  },
+
+  botonesRow: {
+    flexDirection: "row",
+    marginTop: 10,
+    gap: 6,
+  },
+
+  btn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+
+  btnText: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 12,
   },
 
   emptyContainer: {

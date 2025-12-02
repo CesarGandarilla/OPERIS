@@ -221,19 +221,7 @@ export default function AgregarSolicitudRapidaModal({
                   <Text style={styles.errorText}>{errores.cantidad}</Text>
                 )}
 
-                {/* Urgente */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    marginTop: 8,
-                  }}
-                >
-                  <Text style={{ fontWeight: "600", marginRight: 8 }}>
-                    Urgente
-                  </Text>
-                  <Switch value={urgente} onValueChange={setUrgente} />
-                </View>
+
 
                
 

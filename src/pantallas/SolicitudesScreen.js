@@ -259,7 +259,22 @@ export default function SolicitudesScreen() {
     });
   }
 
+  // Prioridad de estados
+  const prioridadEstado = {
+    Pendiente: 1,
+    Aceptada: 2,
+    Lista: 3,
+  };
+
+  // Ordenador final
   const solicitudesOrdenadas = [...solicitudesFiltradas].sort((a, b) => {
+    // 1. Ordenar primero por estado según prioridad
+    const pa = prioridadEstado[a.estado] || 99;
+    const pb = prioridadEstado[b.estado] || 99;
+
+    if (pa !== pb) return pa - pb;
+
+    // 2. Si tienen el mismo estado, ordenar por fecha necesaria
     const da = getDateFromField(a.fechaNecesaria);
     const db = getDateFromField(b.fechaNecesaria);
 
@@ -267,8 +282,10 @@ export default function SolicitudesScreen() {
     if (da && !db) return -1;
     if (!da && db) return 1;
 
-    return (b.creadoEn || 0) - (a.creadoEn || 0);
+    // 3. Si no tienen fecha → ordenar por fecha de creación
+    return (a.creadoEn || 0) - (b.creadoEn || 0);
   });
+
 
   // ---- ACCIONES CEYE ----
   const aceptar = (id) => updateSolicitud(id, { estado: "Aceptada" });

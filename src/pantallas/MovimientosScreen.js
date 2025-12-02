@@ -1,5 +1,5 @@
 // src/pantallas/MovimientosScreen.js
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -7,13 +7,15 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
+  Animated,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRoute } from "@react-navigation/native";
-import { Feather } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
 import { listenSolicitudes } from "../firebase/firebaseApi";
-import { updateSolicitudEstado } from "../firebase/firebaseApi";   // 🔵 AGREGADO
+import { updateSolicitudEstado } from "../firebase/firebaseApi"; // 🔵 AGREGADO
 import { getDateFromField, formatFechaNecesaria } from "../utils/fechaUtils";
 import { tema } from "../tema";
 
@@ -40,59 +42,82 @@ const getColor = (estado) => {
   }
 };
 
-/** Dropdown genérico para filtros */
-function DropdownFiltro({ label, value, options, onChange }) {
-  const [open, setOpen] = useState(false);
+/** Dropdown genérico para filtros
+ *  IMPLEMENTACIÓN: estilo y comportamiento igual a FiltrosInventario.js
+ *  - botón blanco con borde verde/azul
+ *  - lista desplegable animada (altura)
+ *  - overlay tocable para cerrar
+ */
+function DropdownFiltro({ label, value, options = [], onChange }) {
+  const [visible, setVisible] = useState(false);
+  const animHeight = useRef(new Animated.Value(0)).current;
+  const ITEM_HEIGHT = 41;
+
+  useEffect(() => {
+    Animated.timing(animHeight, {
+      toValue: visible ? options.length * ITEM_HEIGHT : 0,
+      duration: 240,
+      useNativeDriver: false,
+    }).start();
+  }, [visible, options.length, animHeight]);
+
+  const toggleMenu = () => setVisible((v) => !v);
+
+  const seleccionar = (op) => {
+    onChange(op);
+    setVisible(false);
+  };
 
   return (
-    <View style={styles.filtrosSection}>
+    <View style={styles.filtroWrapper}>
       <Text style={styles.filtroLabel}>{label}</Text>
 
-      <TouchableOpacity
-        style={styles.dropdownButton}
-        onPress={() => setOpen((prev) => !prev)}
-        activeOpacity={0.8}
-      >
-        <Text
-          style={[
-            styles.dropdownValue,
-            !value && styles.dropdownPlaceholder,
-          ]}
-          numberOfLines={1}
-        >
-          {value || "Selecciona..."}
-        </Text>
-        <Feather
-          name={open ? "chevron-up" : "chevron-down"}
-          size={16}
-          color="#6B7280"
+      {/* Botón principal con estilo igual a Inventario */}
+      <TouchableOpacity style={styles.filtroButton} onPress={toggleMenu} activeOpacity={0.9}>
+        <Ionicons name="filter-outline" size={18} color="#00bfa5" />
+        <Text style={styles.filtroButtonText}>{value || "Selecciona..."}</Text>
+        <Ionicons
+          name={visible ? "chevron-up" : "chevron-down"}
+          size={18}
+          color="#00bfa5"
+          style={{ marginLeft: 6 }}
         />
       </TouchableOpacity>
 
-      {open && (
-        <View style={styles.dropdownOptions}>
-          {options.map((op) => (
-            <TouchableOpacity
-              key={op}
-              style={styles.dropdownOption}
-              onPress={() => {
-                onChange(op);
-                setOpen(false);
-              }}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  styles.dropdownOptionText,
-                  op === value && styles.dropdownOptionTextActivo,
-                ]}
-              >
-                {op}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+      {/* Fondo transparente para cerrar el menú al tocar fuera */}
+      {visible && (
+        <TouchableWithoutFeedback onPress={() => setVisible(false)}>
+          <View style={styles.filtroOverlay} />
+        </TouchableWithoutFeedback>
       )}
+
+      {/* Menú desplegable animado */}
+      <Animated.View style={[styles.filtroDropdown, { height: animHeight }]}>
+        {visible && (
+          <FlatList
+            data={options}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.filtroItem,
+                  value === item && styles.filtroItemSeleccionado,
+                ]}
+                onPress={() => seleccionar(item)}
+              >
+                <Text
+                  style={[
+                    styles.filtroItemText,
+                    value === item && styles.filtroItemTextSeleccionado,
+                  ]}
+                >
+                  {item}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        )}
+      </Animated.View>
     </View>
   );
 }
@@ -224,12 +249,7 @@ export default function MovimientosScreen() {
       : "Sin fecha";
 
     return (
-      <View
-        style={[
-          styles.card,
-          { borderLeftColor: getColor(item.estado) },
-        ]}
-      >
+      <View style={[styles.card, { borderLeftColor: getColor(item.estado) }]}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>
             Solicitud de {item.usuario || "Desconocido"}
@@ -242,17 +262,9 @@ export default function MovimientosScreen() {
             ]}
           >
             <View
-              style={[
-                styles.estadoDot,
-                { backgroundColor: getColor(item.estado) },
-              ]}
+              style={[styles.estadoDot, { backgroundColor: getColor(item.estado) }]}
             />
-            <Text
-              style={[
-                styles.estadoText,
-                { color: getColor(item.estado) },
-              ]}
-            >
+            <Text style={[styles.estadoText, { color: getColor(item.estado) }]}>
               {item.estado}
             </Text>
           </View>
@@ -260,19 +272,13 @@ export default function MovimientosScreen() {
 
         {(item.destino || item.cirugia) && (
           <View style={{ marginTop: 4 }}>
-            {item.destino && (
-              <Text style={styles.destinoText}>{item.destino}</Text>
-            )}
-            {item.cirugia && (
-              <Text style={styles.cirugiaText}>{item.cirugia}</Text>
-            )}
+            {item.destino && <Text style={styles.destinoText}>{item.destino}</Text>}
+            {item.cirugia && <Text style={styles.cirugiaText}>{item.cirugia}</Text>}
           </View>
         )}
 
         {fechaNecesariaTexto && (
-          <Text style={styles.fechaNecesaria}>
-            Necesario: {fechaNecesariaTexto}
-          </Text>
+          <Text style={styles.fechaNecesaria}>Necesario: {fechaNecesariaTexto}</Text>
         )}
 
         <View style={styles.itemsContainer}>
@@ -283,9 +289,7 @@ export default function MovimientosScreen() {
           ))}
         </View>
 
-        <Text style={styles.fechaCreacion}>
-          Creado: {fechaCreacionTexto}
-        </Text>
+        <Text style={styles.fechaCreacion}>Creado: {fechaCreacionTexto}</Text>
 
         {/* ---------------------------------- */}
         {/* 🔵 BOTONES DE CAMBIO DE ESTADO    */}
@@ -298,10 +302,9 @@ export default function MovimientosScreen() {
                 onPress={() => cambiarEstado(item.id, "Pendiente")}
               >
                 <Text style={styles.btnText}>Reabrir</Text>
-             </TouchableOpacity>
+              </TouchableOpacity>
             )}
 
-            
             {item.estado === "Problema" && (
               <TouchableOpacity
                 style={[styles.btn, { backgroundColor: "#F59E0B" }]}
@@ -328,6 +331,7 @@ export default function MovimientosScreen() {
           onChangeText={setSearch}
         />
 
+        {/* ---------- FILTRO: ESTADO (estilo Inventario) ---------- */}
         <DropdownFiltro
           label="Estado"
           value={filtro}
@@ -335,6 +339,7 @@ export default function MovimientosScreen() {
           onChange={setFiltro}
         />
 
+        {/* ---------- FILTRO: FECHA (estilo Inventario) ---------- */}
         <DropdownFiltro
           label="Fecha"
           value={filtroFecha}
@@ -387,6 +392,7 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
 
+  /* --- estilos del dropdown (etiqueta + botón) --- */
   filtrosSection: {
     marginBottom: 8,
   },
@@ -395,8 +401,65 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#6B7280",
-    marginBottom: 4,
+    marginBottom: 6,
     marginLeft: 2,
+  },
+
+  /* estilos del wrapper/button/dropdown (inspirado en FiltrosInventario.js) */
+  filtroWrapper: {
+    marginBottom: 8,
+    zIndex: 30,
+  },
+  filtroButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#00bfa5",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+    zIndex: 10,
+  },
+  filtroButtonText: {
+    flex: 1,
+    marginLeft: 8,
+    color: "#00bfa5",
+    fontWeight: "bold",
+  },
+  filtroDropdown: {
+    overflow: "hidden",
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    marginTop: 5,
+    elevation: 3,
+    zIndex: 20,
+  },
+  filtroItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  filtroItemSeleccionado: {
+    backgroundColor: "#e0f2f1",
+  },
+  filtroItemText: {
+    fontSize: 13,
+    color: "#333",
+  },
+  filtroItemTextSeleccionado: {
+    color: "#00bfa5",
+    fontWeight: "bold",
+  },
+  filtroOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "transparent",
+    zIndex: 5,
   },
 
   dropdownButton: {

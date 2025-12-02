@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
-import { tema } from "../tema"
+import { tema } from "../tema";
 
 export default function AgregarSolicitudRapidaModal({
   visible,
@@ -34,7 +34,6 @@ export default function AgregarSolicitudRapidaModal({
   const [comentario, setComentario] = useState("");
   const [mostrarResultados, setMostrarResultados] = useState(false);
   const [errores, setErrores] = useState({ cantidad: "", insumo: "" });
-  
 
   useEffect(() => {
     const cargar = async () => {
@@ -68,11 +67,13 @@ export default function AgregarSolicitudRapidaModal({
     setUrgente(false);
     setComentario("");
     setMostrarResultados(false);
-    setItemsSeleccionados([])
+    setItemsSeleccionados([]);
     setErrores({ cantidad: "", insumo: "" });
   };
 
-  
+  const eliminarItem = (index) => {
+  setItemsSeleccionados((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const agregarItem = () => {
     let huboError = false;
@@ -112,7 +113,7 @@ export default function AgregarSolicitudRapidaModal({
     setComentario("");
     setErrores({ cantidad: "", insumo: "" });
   };
-  
+
   const enviarSolicitud = () => {
     if (itemsSeleccionados.length === 0) {
       Alert.alert("Error", "Agrega al menos un insumo.");
@@ -137,7 +138,6 @@ export default function AgregarSolicitudRapidaModal({
     onClose();
   };
 
-
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <KeyboardAvoidingView
@@ -149,7 +149,11 @@ export default function AgregarSolicitudRapidaModal({
             <View style={styles.modalContainer}>
               <Text style={styles.title}>Solicitud Rápida</Text>
 
-              <ScrollView keyboardShouldPersistTaps="handled">
+              {/* 👇 ahora TODO el contenido (incluyendo el botón) es scrolleable */}
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 20 }}
+              >
                 {/* Buscar */}
                 <Text style={styles.label}>Artículo</Text>
                 <TextInput
@@ -167,7 +171,7 @@ export default function AgregarSolicitudRapidaModal({
 
                 {mostrarResultados && (
                   <View style={styles.smallListContainer}>
-                    <ScrollView>
+                    <ScrollView keyboardShouldPersistTaps="handled">
                       {insumosFiltrados.length === 0 ? (
                         <View style={styles.item}>
                           <Text>No se encontraron insumos</Text>
@@ -231,65 +235,74 @@ export default function AgregarSolicitudRapidaModal({
                   <Switch value={urgente} onValueChange={setUrgente} />
                 </View>
 
-                {/* Comentario */}
-                <Text style={[styles.label, { marginTop: 10 }]}>
-                  Comentario (opcional)
-                </Text>
-                <TextInput
-                  placeholder="Detalle breve"
-                  style={[
-                    styles.input,
-                    { minHeight: 60, textAlignVertical: "top" },
-                  ]}
-                  value={comentario}
-                  onChangeText={setComentario}
-                  multiline
-                  placeholderTextColor="#999"
-                />
-              </ScrollView>
-              {/*Botón de agregar más shet */}
-                   <TouchableOpacity
-                      style={{
-                        backgroundColor: "#4CAF50",
-                        padding: 12,
-                        borderRadius: 8,
-                        marginTop: 10,
-                      }}
-                      onPress={agregarItem}
-                    >
-                      <Text style={{ color: "white", fontWeight: "600", textAlign: "center" }}>
-                        Agregar insumo
-                      </Text>
-                    </TouchableOpacity>
+               
 
-                    {/* Mostrar lista de los insumos agregados */}
-                    {itemsSeleccionados.length > 0 && (
-                      <View style={{ marginTop: 15 }}>
-                        <Text style={{ fontWeight: "700", marginBottom: 5 }}>
-                          Insumos agregados:
-                        </Text>
+                {/* Botón de agregar insumo */}
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#00BFA5",
+                    padding: 12,
+                    borderRadius: 8,
+                    marginTop: 10,
+                  }}
+                  onPress={agregarItem}
+                >
+                  <Text
+                    style={{
+                      color: "white",
+                      fontWeight: "600",
+                      textAlign: "center",
+                    }}
+                  >
+                    Agregar insumo
+                  </Text>
+                </TouchableOpacity>
 
-                        {itemsSeleccionados.map((item, index) => (
-                          <Text key={index}>• {item.nombre} — {item.cantidad}</Text>
-                        ))}
+                {/* Mostrar lista de los insumos agregados */}
+                <View style={styles.smallListContainer}>
+                  <ScrollView>
+                    {itemsSeleccionados.map((item, index) => (
+                      <View key={index} style={styles.previewItem}>
+                        <Text>
+                          {item.nombre} × {item.cantidad}
+                       </Text>
+
+                       <TouchableOpacity onPress={() => eliminarItem(index)}>
+                          <Text style={styles.removeText}>Eliminar</Text>
+                        </TouchableOpacity>
                       </View>
-                    )}
+                   ))}
 
-                    {/* Botón final para enviar la solicitud */}
-                    <TouchableOpacity
-                      style={{
-                        backgroundColor: tema.colorPrincipal,
-                        padding: 15,
-                        borderRadius: 8,
-                        marginTop: 20,
-                      }}
-                      onPress={enviarSolicitud}
-                    >
-                      <Text style={{ color: "white", fontWeight: "600", textAlign: "center" }}>
-                        Enviar solicitud
-                      </Text>
-                    </TouchableOpacity>
-              
+                    {itemsSeleccionados.length === 0 && (
+                     <View style={styles.item}>
+                       <Text>Aún no has añadido insumos.</Text>
+                      </View>
+                   )}
+                 </ScrollView>
+                </View>
+
+
+                {/* Botón final para enviar la solicitud */}
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: tema.colorPrincipal || "#027868ff",
+                    padding: 15,
+                    borderRadius: 8,
+                    marginTop: 20,
+                  }}
+                  onPress={enviarSolicitud}
+                >
+                  <Text
+                    style={{
+                      color: "white",
+                      fontWeight: "600",
+                      textAlign: "center",
+                    }}
+                  >
+                    Enviar solicitud
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
 
               {/* Cancelar */}
               <TouchableOpacity
@@ -310,6 +323,19 @@ export default function AgregarSolicitudRapidaModal({
 }
 
 const styles = StyleSheet.create({
+  previewItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 10,
+    borderBottomWidth: 1,
+    borderColor: "#EEE",
+  },
+
+  removeText: {
+    color: "red",
+    fontWeight: "600",
+  },
+  
   overlay: {
     flex: 1,
     width: "100%",

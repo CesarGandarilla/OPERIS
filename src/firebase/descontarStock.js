@@ -1,4 +1,4 @@
-// descontarStock.js
+// firebase/descontarStock.js
 import { doc, getDoc, writeBatch } from "firebase/firestore";
 import { db } from "./inventarios";
 

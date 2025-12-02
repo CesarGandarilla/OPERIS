@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+// AgregarSolicitudModal.js
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,14 +13,18 @@ import {
   Platform,
   Keyboard,
   TouchableWithoutFeedback,
+  FlatList,
 } from "react-native";
-import DateTimePickerModal from "react-native-modal-datetime-picker";
+
+import dayjs from "dayjs";
+
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase/inventarios";
 
-// ⬅️ IMPORTAMOS LISTAS EXTERNAS
+//  IMPORTAMOS LISTAS EXTERNAS
 import { LUGARES_ENTREGA } from "../constants/lugaresEntrega";
 import { CIRUGIAS } from "../constants/cirugias";
+import { kits } from "../constants/kits";
 
 const MAX_CANTIDAD_POR_ITEM = 100;
 
@@ -29,47 +34,49 @@ export default function AgregarSolicitudModal({
   usuario,
   rol,
   onEnviar,
+  itemsIniciales = null,
+  kitSeleccionado = null,
 }) {
+  // Datos de inventario
   const [insumos, setInsumos] = useState([]);
-  const [seleccion, setSeleccion] = useState([]);
+  // Form
+  const [seleccion, setSeleccion] = useState([]); // [{ insumoId|null, nombre, cantidad }]
   const [cantidad, setCantidad] = useState("");
   const [insumoSeleccionado, setInsumoSeleccionado] = useState(null);
-
   const [busqueda, setBusqueda] = useState("");
-
-  // Paso 1 = insumos, 2 = datos
+  // pasos
   const [paso, setPaso] = useState(1);
-
-  // Fecha/hora
+  // fecha / hora
   const [fechaNecesaria, setFechaNecesaria] = useState(null);
-  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
-  const [isTimePickerVisible, setTimePickerVisibility] = useState(false);
-
-  // Destino
+  const [openCalendar, setOpenCalendar] = useState(false);
+  const [openClock, setOpenClock] = useState(false);
+  // destino
   const [lugarEntrega, setLugarEntrega] = useState(null);
-  const [destinoBusqueda, setDestinoBusqueda] = useState(""); // solo para mostrar el nombre elegido
-
-  // Cirugía
+  const [destinoBusqueda, setDestinoBusqueda] = useState("");
+  // cirugia
   const [cirugia, setCirugia] = useState("");
-
+  // mensajes / errores / UI
   const [errores, setErrores] = useState({
     cantidad: "",
     fecha: "",
     destino: "",
     cirugia: "",
   });
-
   const [mensajeInsumo, setMensajeInsumo] = useState("");
-
   const [mostrarResultadosInsumos, setMostrarResultadosInsumos] =
     useState(false);
   const [mostrarResultadosCirugia, setMostrarResultadosCirugia] =
     useState(false);
 
+  // ---------------------------
+  // Cargar insumos desde Firestore (una vez)
+  // ---------------------------
   useEffect(() => {
+    let mounted = true;
     const cargarInsumos = async () => {
       try {
         const snap = await getDocs(collection(db, "insumos"));
+        if (!mounted) return;
         setInsumos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (error) {
         console.error("Error cargando insumos", error);
@@ -77,9 +84,46 @@ export default function AgregarSolicitudModal({
       }
     };
     cargarInsumos();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // Filtrar insumos
+  // ---------------------------
+  // Mapeos útiles
+  // ---------------------------
+  const insumoPorNombre = useMemo(() => {
+    const map = new Map();
+    insumos.forEach((i) => {
+      if (i.nombre) map.set(i.nombre.trim().toLowerCase(), i);
+    });
+    return map;
+  }, [insumos]);
+
+  // Cuando se abre el modal y vienen items iniciales / kit -> precargar selección
+  useEffect(() => {
+    if (!visible) return;
+    const inicial = kitSeleccionado?.items || itemsIniciales || null;
+    if (inicial && Array.isArray(inicial)) {
+      const itemsMapeados = inicial.map((it) => {
+        const nombre = (it.nombre || "").trim();
+        const encontrado = insumoPorNombre.get(nombre.toLowerCase());
+        return {
+          insumoId: encontrado?.id || null,
+          nombre,
+          cantidad: Number(it.cantidad) || 0,
+        };
+      });
+      setSeleccion(itemsMapeados);
+      setPaso(1);
+      setMensajeInsumo(
+        itemsMapeados.length ? "Kit cargado en la selección." : ""
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, kitSeleccionado, itemsIniciales, insumoPorNombre]);
+
+  // Filtrado dinámico de insumos por búsqueda
   const insumosFiltrados =
     busqueda.trim() === ""
       ? []
@@ -87,7 +131,7 @@ export default function AgregarSolicitudModal({
           i.nombre?.toLowerCase().includes(busqueda.toLowerCase())
         );
 
-  // Filtrar cirugías (desde el archivo de constantes)
+  // Filtrar cirugías (constante)
   const cirugiasFiltradas =
     cirugia.trim() === ""
       ? []
@@ -95,6 +139,7 @@ export default function AgregarSolicitudModal({
           c.nombre.toLowerCase().includes(cirugia.toLowerCase())
         );
 
+  // Reset completo del formulario
   const resetFormulario = () => {
     setSeleccion([]);
     setCantidad("");
@@ -104,27 +149,27 @@ export default function AgregarSolicitudModal({
     setLugarEntrega(null);
     setDestinoBusqueda("");
     setCirugia("");
-    setDatePickerVisibility(false);
-    setTimePickerVisibility(false);
+    setOpenCalendar(false);
+    setOpenClock(false);
     setPaso(1);
-
     setErrores({
       cantidad: "",
       fecha: "",
       destino: "",
       cirugia: "",
     });
-
     setMensajeInsumo("");
     setMostrarResultadosInsumos(false);
     setMostrarResultadosCirugia(false);
   };
 
+  // Handle cerrar
   const handleCerrar = () => {
     resetFormulario();
     onClose();
   };
 
+  // Agregar item a seleccion (mantiene lógica original)
   const agregarItem = () => {
     setErrores((prev) => ({ ...prev, cantidad: "" }));
     setMensajeInsumo("");
@@ -140,24 +185,20 @@ export default function AgregarSolicitudModal({
     const cantidadNumero = parseInt(cantidad, 10);
 
     if (isNaN(cantidadNumero) || cantidadNumero <= 0) {
-      setErrores((prev) => ({
-        ...prev,
-        cantidad: "La cantidad debe ser mayor a cero.",
-      }));
+      setErrores((prev) => ({ ...prev, cantidad: "La cantidad debe ser mayor a cero." }));
       return;
     }
 
     if (cantidadNumero > MAX_CANTIDAD_POR_ITEM) {
-      setErrores((prev) => ({
-        ...prev,
-        cantidad: `Máximo permitido: ${MAX_CANTIDAD_POR_ITEM}.`,
-      }));
+      setErrores((prev) => ({ ...prev, cantidad: `Máximo permitido: ${MAX_CANTIDAD_POR_ITEM}.` }));
       return;
     }
 
     setSeleccion((prev) => {
       const idx = prev.findIndex(
-        (p) => p.insumoId === insumoSeleccionado.id
+        (p) =>
+          (p.insumoId && p.insumoId === insumoSeleccionado.id) ||
+          (p.insumoId == null && p.nombre === insumoSeleccionado.nombre)
       );
 
       if (idx !== -1) {
@@ -179,14 +220,14 @@ export default function AgregarSolicitudModal({
       return [
         ...prev,
         {
-          insumoId: insumoSeleccionado.id,
+          insumoId: insumoSeleccionado.id || null,
           nombre: insumoSeleccionado.nombre,
           cantidad: cantidadNumero,
         },
       ];
     });
 
-    // limpiar cantidad, selección y búsqueda al agregar
+    // limpiar campos
     setCantidad("");
     setInsumoSeleccionado(null);
     setBusqueda("");
@@ -199,28 +240,30 @@ export default function AgregarSolicitudModal({
     setMensajeInsumo("");
   };
 
-  const showDatePicker = () => setDatePickerVisibility(true);
-  const hideDatePicker = () => setDatePickerVisibility(false);
+  // Date/time handlers (abren nuestros modales JS)
+  const showDatePicker = () => setOpenCalendar(true);
+  const hideDatePicker = () => setOpenCalendar(false);
 
-  const showTimePicker = () => setTimePickerVisibility(true);
-  const hideTimePicker = () => setTimePickerVisibility(false);
+  const showTimePicker = () => setOpenClock(true);
+  const hideTimePicker = () => setOpenClock(false);
 
-  const handleConfirmDate = (date) => {
+  // Cuando el usuario confirma desde mi CalendarModal
+  const handleConfirmDateFromCalendar = (date) => {
+    if (!date) return;
     const base = fechaNecesaria ? new Date(fechaNecesaria) : new Date();
     const nueva = new Date(base);
     nueva.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
     setFechaNecesaria(nueva);
     setErrores((prev) => ({ ...prev, fecha: "" }));
-    hideDatePicker();
   };
 
-  const handleConfirmTime = (time) => {
+  // Cuando el usuario confirma desde mi TimePickerModal
+  const handleConfirmTimeFromClock = (hours, minutes) => {
     const base = fechaNecesaria ? new Date(fechaNecesaria) : new Date();
     const nueva = new Date(base);
-    nueva.setHours(time.getHours(), time.getMinutes());
+    nueva.setHours(hours, minutes, 0, 0);
     setFechaNecesaria(nueva);
     setErrores((prev) => ({ ...prev, fecha: "" }));
-    hideTimePicker();
   };
 
   const mostrarTextoFechaHora = () => {
@@ -232,6 +275,7 @@ export default function AgregarSolicitudModal({
       .replace("p. m.", "PM")}`;
   };
 
+  // Validación y envío (preserva tu payload original)
   const enviarSolicitud = () => {
     let huboError = false;
     const nuevosErrores = {
@@ -241,23 +285,13 @@ export default function AgregarSolicitudModal({
       cirugia: "",
     };
 
-    // Validar fecha (permite elegir cualquiera en el calendario,
-    // pero aquí checamos el rango mañana–30 días)
     if (!fechaNecesaria) {
       nuevosErrores.fecha = "Selecciona fecha y hora.";
       huboError = true;
     } else {
       const hoy = new Date();
-      const manana = new Date(
-        hoy.getFullYear(),
-        hoy.getMonth(),
-        hoy.getDate() + 1
-      );
-      const maxDate = new Date(
-        hoy.getFullYear(),
-        hoy.getMonth(),
-        hoy.getDate() + 30
-      );
+      const manana = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1);
+      const maxDate = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 30);
 
       const fechaSolo = new Date(
         fechaNecesaria.getFullYear(),
@@ -266,8 +300,7 @@ export default function AgregarSolicitudModal({
       );
 
       if (fechaSolo < manana || fechaSolo > maxDate) {
-        nuevosErrores.fecha =
-          "La fecha debe ser desde mañana y máximo en 30 días.";
+        nuevosErrores.fecha = "La fecha debe ser desde mañana y máximo en 30 días.";
         huboError = true;
       }
     }
@@ -277,7 +310,6 @@ export default function AgregarSolicitudModal({
       huboError = true;
     }
 
-    // 🔹 Cirugía OBLIGATORIA
     if (!cirugia.trim()) {
       nuevosErrores.cirugia = "Describe la cirugía o procedimiento.";
       huboError = true;
@@ -312,10 +344,7 @@ export default function AgregarSolicitudModal({
 
   const irASiguientePaso = () => {
     if (seleccion.length === 0) {
-      Alert.alert(
-        "Faltan insumos",
-        "Agrega al menos un insumo para continuar."
-      );
+      Alert.alert("Faltan insumos", "Agrega al menos un insumo para continuar.");
       return;
     }
     setPaso(2);
@@ -323,6 +352,243 @@ export default function AgregarSolicitudModal({
 
   const irAPasoAnterior = () => setPaso(1);
 
+  // Subcomponent: lista de insumos añadidos (render)
+  const RenderSeleccion = () => (
+    <View style={styles.smallListContainer}>
+      <ScrollView>
+        {seleccion.map((item, index) => (
+          <View key={index} style={styles.previewItem}>
+            <Text>{item.nombre} × {item.cantidad}</Text>
+            <TouchableOpacity onPress={() => eliminarSeleccion(index)}>
+              <Text style={styles.removeText}>Eliminar</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        {seleccion.length === 0 && (
+          <View style={styles.item}>
+            <Text>Aún no has añadido insumos.</Text>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+
+  // ---------------------------
+  // CalendarModal (pure JS)
+  // ---------------------------
+  const CalendarModal = ({ visible, initialDate, onCancel, onConfirm }) => {
+    const [monthOffset, setMonthOffset] = useState(0);
+    const base = initialDate ? dayjs(initialDate) : dayjs();
+    const displayed = base.add(monthOffset, "month");
+    const startOfMonth = displayed.startOf("month");
+    const endOfMonth = displayed.endOf("month");
+    const monthMatrix = []; // rows of weeks (each row is 7 items)
+    const firstDayIndex = startOfMonth.day(); // 0 (Sun) - 6 (Sat)
+    const daysInMonth = displayed.daysInMonth();
+
+    // Create a 6x7 grid (to always have enough rows)
+    let current = startOfMonth.subtract(firstDayIndex, "day");
+    for (let week = 0; week < 6; week++) {
+      const row = [];
+      for (let day = 0; day < 7; day++) {
+        row.push(current.toDate());
+        current = current.add(1, "day");
+      }
+      monthMatrix.push(row);
+    }
+
+    const [selectedDateLocal, setSelectedDateLocal] = useState(
+      initialDate ? new Date(initialDate) : null
+    );
+
+    useEffect(() => {
+      // reset when visible opens
+      if (visible) {
+        setMonthOffset(0);
+        setSelectedDateLocal(initialDate ? new Date(initialDate) : null);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible]);
+
+    const isSameDay = (a, b) => {
+      if (!a || !b) return false;
+      return (
+        a.getFullYear() === b.getFullYear() &&
+        a.getMonth() === b.getMonth() &&
+        a.getDate() === b.getDate()
+      );
+    };
+
+    return (
+      <Modal visible={visible} transparent animationType="fade">
+        <View style={styles.popupBackground}>
+          <View style={styles.calendarContainer}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <TouchableOpacity onPress={() => setMonthOffset((m) => m - 1)} style={{ padding: 8 }}>
+                <Text style={{ fontSize: 18 }}>‹</Text>
+              </TouchableOpacity>
+              <Text style={{ fontWeight: "700", fontSize: 16 }}>
+                {displayed.format("MMMM YYYY")}
+              </Text>
+              <TouchableOpacity onPress={() => setMonthOffset((m) => m + 1)} style={{ padding: 8 }}>
+                <Text style={{ fontSize: 18 }}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Weekday labels */}
+            <View style={{ flexDirection: "row", marginTop: 8 }}>
+              {["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"].map((wd) => (
+                <View key={wd} style={{ flex: 1, alignItems: "center", paddingVertical: 6 }}>
+                  <Text style={{ fontWeight: "600" }}>{wd}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Days grid */}
+            <View>
+              {monthMatrix.map((row, ri) => (
+                <View key={ri} style={{ flexDirection: "row" }}>
+                  {row.map((d, ci) => {
+                    const inCurrentMonth = d.getMonth() === displayed.month();
+                    const isToday = isSameDay(d, new Date());
+                    const isSelected = selectedDateLocal && isSameDay(d, selectedDateLocal);
+
+                    return (
+                      <TouchableOpacity
+                        key={ci}
+                        style={[
+                          styles.calendarDay,
+                          inCurrentMonth ? null : styles.calendarDayMuted,
+                          isSelected && styles.calendarDaySelected,
+                        ]}
+                        onPress={() => setSelectedDateLocal(new Date(d))}
+                        disabled={!inCurrentMonth}
+                      >
+                        <Text style={[
+                          styles.calendarDayText,
+                          isToday && styles.calendarDayTodayText,
+                          !inCurrentMonth && { color: "#BDBDBD" },
+                          isSelected && { color: "#fff", fontWeight: "700" }
+                        ]}>
+                          {d.getDate()}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+
+            <View style={{ marginTop: 12 }}>
+              <TouchableOpacity
+                style={styles.popupButton}
+                onPress={() => {
+                  onConfirm(selectedDateLocal);
+                }}
+              >
+                <Text style={styles.popupButtonText}>Seleccionar fecha</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={onCancel} style={{ marginTop: 10 }}>
+                <Text style={styles.cancelPopup}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  // ---------------------------
+  // TimePickerModal (pure JS)
+  // ---------------------------
+  const TimePickerModal = ({ visible, initialDate, onCancel, onConfirm }) => {
+    const initDate = initialDate ? new Date(initialDate) : new Date();
+    const [hour, setHour] = useState(initDate.getHours());
+    const [minute, setMinute] = useState(Math.round(initDate.getMinutes() / 5) * 5);
+
+    useEffect(() => {
+      if (visible) {
+        const d = initialDate ? new Date(initialDate) : new Date();
+        setHour(d.getHours());
+        setMinute(Math.round(d.getMinutes() / 5) * 5);
+      }
+    }, [visible, initialDate]);
+
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    const minutes = Array.from({ length: 12 }, (_, i) => i * 5); // 0,5,10,...55
+
+    return (
+      <Modal visible={visible} transparent animationType="fade">
+        <View style={styles.popupBackground}>
+          <View style={styles.timeContainer}>
+            <Text style={{ fontWeight: "700", fontSize: 16, textAlign: "center", marginBottom: 8 }}>
+              Seleccionar hora
+            </Text>
+
+            <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center" }}>
+              <View style={{ width: 120, height: 180 }}>
+                <FlatList
+                  data={hours}
+                  keyExtractor={(i) => `${i}`}
+                  showsVerticalScrollIndicator={false}
+                  initialScrollIndex={hour}
+                  getItemLayout={(_, index) => ({ length: 36, offset: 36 * index, index })}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[styles.timeOption, item === hour && styles.timeOptionSelected]}
+                      onPress={() => setHour(item)}
+                    >
+                      <Text style={[styles.timeOptionText, item === hour && { color: "#fff", fontWeight: "700" }]}>
+                        {String(item).padStart(2, "0")}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+
+              <Text style={{ marginHorizontal: 8, fontSize: 20 }}>:</Text>
+
+              <View style={{ width: 120, height: 180 }}>
+                <FlatList
+                  data={minutes}
+                  keyExtractor={(i) => `${i}`}
+                  showsVerticalScrollIndicator={false}
+                  initialScrollIndex={minutes.indexOf(minute)}
+                  getItemLayout={(_, index) => ({ length: 36, offset: 36 * index, index })}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[styles.timeOption, item === minute && styles.timeOptionSelected]}
+                      onPress={() => setMinute(item)}
+                    >
+                      <Text style={[styles.timeOptionText, item === minute && { color: "#fff", fontWeight: "700" }]}>
+                        {String(item).padStart(2, "0")}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.popupButton, { marginTop: 12 }]}
+              onPress={() => onConfirm(hour, minute)}
+            >
+              <Text style={styles.popupButtonText}>Seleccionar hora</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={onCancel} style={{ marginTop: 10 }}>
+              <Text style={styles.cancelPopup}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  // ---------------------------
+  // RENDER
+  // ---------------------------
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <KeyboardAvoidingView
@@ -345,7 +611,7 @@ export default function AgregarSolicitudModal({
                 </View>
               </View>
 
-              {/* Banner insumo añadido */}
+              {/* Banner */}
               {paso === 1 && !!mensajeInsumo && !errores.cantidad && (
                 <View style={styles.successBox}>
                   <Text style={styles.successText}>✓ {mensajeInsumo}</Text>
@@ -355,18 +621,16 @@ export default function AgregarSolicitudModal({
               <ScrollView keyboardShouldPersistTaps="handled">
                 {paso === 1 && (
                   <>
-                    <Text style={styles.sectionTitle}>
-                      1. Selecciona los insumos
-                    </Text>
+                    <Text style={styles.sectionTitle}>1. Selecciona los insumos</Text>
 
-                    {/* BUSCAR INSUMO */}
+                    {/* Buscar insumo */}
                     <Text style={styles.label}>Buscar insumo</Text>
                     <TextInput
                       placeholder="Escribe para buscar"
                       value={busqueda}
                       onChangeText={(text) => {
                         setBusqueda(text);
-                        setInsumoSeleccionado(null); // invalida la selección
+                        setInsumoSeleccionado(null);
                         setMensajeInsumo("");
                         setMostrarResultadosInsumos(text.trim() !== "");
                       }}
@@ -375,38 +639,52 @@ export default function AgregarSolicitudModal({
                       color="#000"
                     />
 
-                    {mostrarResultadosInsumos &&
-                      busqueda.trim() !== "" && (
-                        <View style={styles.smallListContainer}>
-                          <ScrollView keyboardShouldPersistTaps="handled">
-                            {insumosFiltrados.length === 0 ? (
-                              <View style={styles.item}>
-                                <Text>No se encontraron insumos</Text>
-                              </View>
-                            ) : (
-                              insumosFiltrados.map((item) => (
-                                <TouchableOpacity
-                                  key={item.id}
-                                  style={[
-                                    styles.item,
-                                    insumoSeleccionado?.id === item.id &&
-                                      styles.itemSelected,
-                                  ]}
-                                  onPress={() => {
-                                    setInsumoSeleccionado(item);
-                                    setBusqueda(item.nombre);
-                                    setMostrarResultadosInsumos(false);
-                                  }}
-                                >
-                                  <Text>{item.nombre}</Text>
-                                </TouchableOpacity>
-                              ))
-                            )}
-                          </ScrollView>
-                        </View>
-                      )}
+                    {/* Resultados */}
+                    {mostrarResultadosInsumos && busqueda.trim() !== "" && (
+                      <View style={styles.smallListContainer}>
+                        <ScrollView keyboardShouldPersistTaps="handled">
+                          {insumosFiltrados.length === 0 ? (
+                            <View style={styles.item}>
+                              <Text>No se encontraron insumos</Text>
+                              <TouchableOpacity
+                                style={{ padding: 8 }}
+                                onPress={() => {
+                                  const nombreLibre = busqueda.trim();
+                                  if (!nombreLibre) return;
+                                  const fake = { id: null, nombre: nombreLibre };
+                                  setInsumoSeleccionado(fake);
+                                  setBusqueda(nombreLibre);
+                                  setMostrarResultadosInsumos(false);
+                                }}
+                              >
+                                <Text style={{ color: "#00695C" }}>
+                                  Usar "{busqueda.trim()}"
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : (
+                            insumosFiltrados.map((item) => (
+                              <TouchableOpacity
+                                key={item.id}
+                                style={[
+                                  styles.item,
+                                  insumoSeleccionado?.id === item.id && styles.itemSelected,
+                                ]}
+                                onPress={() => {
+                                  setInsumoSeleccionado(item);
+                                  setBusqueda(item.nombre);
+                                  setMostrarResultadosInsumos(false);
+                                }}
+                              >
+                                <Text>{item.nombre}</Text>
+                              </TouchableOpacity>
+                            ))
+                          )}
+                        </ScrollView>
+                      </View>
+                    )}
 
-                    {/* CANTIDAD */}
+                    {/* Cantidad */}
                     <Text style={styles.label}>Cantidad</Text>
                     <TextInput
                       style={styles.input}
@@ -424,93 +702,45 @@ export default function AgregarSolicitudModal({
                     />
                     <View style={styles.errorContainer}>
                       {!!errores.cantidad && (
-                        <Text
-                          style={styles.errorText}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
-                        >
+                        <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">
                           {errores.cantidad}
                         </Text>
                       )}
                     </View>
 
-                    <TouchableOpacity
-                      style={styles.addButton}
-                      onPress={agregarItem}
-                    >
+                    <TouchableOpacity style={styles.addButton} onPress={agregarItem}>
                       <Text style={styles.addButtonText}>Agregar insumo</Text>
                     </TouchableOpacity>
 
-                    {/* LISTA DE INSUMOS AÑADIDOS */}
-                    <Text style={[styles.label, { marginTop: 10 }]}>
-                      Insumos añadidos
-                    </Text>
-                    <View style={styles.smallListContainer}>
-                      <ScrollView>
-                        {seleccion.map((item, index) => (
-                          <View key={index} style={styles.previewItem}>
-                            <Text>
-                              {item.nombre} × {item.cantidad}
-                            </Text>
-                            <TouchableOpacity
-                              onPress={() => eliminarSeleccion(index)}
-                            >
-                              <Text style={styles.removeText}>Eliminar</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ))}
-                        {seleccion.length === 0 && (
-                          <View style={styles.item}>
-                            <Text>Aún no has añadido insumos.</Text>
-                          </View>
-                        )}
-                      </ScrollView>
-                    </View>
+                    <Text style={[styles.label, { marginTop: 10 }]}>Insumos añadidos</Text>
+                    <RenderSeleccion />
                   </>
                 )}
 
                 {paso === 2 && (
                   <>
-                    <Text style={styles.sectionTitle}>
-                      2. Datos de la solicitud
-                    </Text>
+                    <Text style={styles.sectionTitle}>2. Datos de la solicitud</Text>
 
-                    {/* FECHA Y HORA */}
+                    {/* Fecha y hora */}
                     <Text style={styles.label}>Fecha y hora</Text>
                     <View style={styles.rowInline}>
-                      <TouchableOpacity
-                        style={styles.selectorButton}
-                        onPress={showDatePicker}
-                      >
-                        <Text style={styles.selectorText}>
-                          Seleccionar fecha
-                        </Text>
+                      <TouchableOpacity style={styles.selectorButton} onPress={showDatePicker}>
+                        <Text style={styles.selectorText}>Seleccionar fecha</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.selectorButton}
-                        onPress={showTimePicker}
-                      >
-                        <Text style={styles.selectorText}>
-                          Seleccionar hora
-                        </Text>
+                      <TouchableOpacity style={styles.selectorButton} onPress={showTimePicker}>
+                        <Text style={styles.selectorText}>Seleccionar hora</Text>
                       </TouchableOpacity>
                     </View>
-                    <Text style={styles.selectedDateText}>
-                      {mostrarTextoFechaHora()}
-                    </Text>
+                    <Text style={styles.selectedDateText}>{mostrarTextoFechaHora()}</Text>
                     <View style={styles.errorContainer}>
                       {!!errores.fecha && (
-                        <Text
-                          style={styles.errorText}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
-                        >
+                        <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">
                           {errores.fecha}
                         </Text>
                       )}
                     </View>
 
-                    {/* DESTINO – SOLO LISTA */}
+                    {/* Destino */}
                     <Text style={styles.label}>Destino</Text>
                     <View style={styles.destinosContainer}>
                       {LUGARES_ENTREGA.map((lugar) => (
@@ -518,8 +748,7 @@ export default function AgregarSolicitudModal({
                           key={lugar.id}
                           style={[
                             styles.destinoPill,
-                            lugarEntrega === lugar.id &&
-                              styles.destinoPillSelected,
+                            lugarEntrega === lugar.id && styles.destinoPillSelected,
                           ]}
                           onPress={() => {
                             setLugarEntrega(lugar.id);
@@ -530,8 +759,7 @@ export default function AgregarSolicitudModal({
                           <Text
                             style={[
                               styles.destinoPillText,
-                              lugarEntrega === lugar.id &&
-                                styles.destinoPillTextSelected,
+                              lugarEntrega === lugar.id && styles.destinoPillTextSelected,
                             ]}
                           >
                             {lugar.nombre}
@@ -540,23 +768,17 @@ export default function AgregarSolicitudModal({
                       ))}
                     </View>
                     <Text style={styles.destinoSeleccionadoText}>
-                      {lugarEntrega
-                        ? `Destino seleccionado: ${destinoBusqueda}`
-                        : "Ningún destino seleccionado"}
+                      {lugarEntrega ? `Destino seleccionado: ${destinoBusqueda}` : "Ningún destino seleccionado"}
                     </Text>
                     <View style={styles.errorContainer}>
                       {!!errores.destino && (
-                        <Text
-                          style={styles.errorText}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
-                        >
+                        <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">
                           {errores.destino}
                         </Text>
                       )}
                     </View>
 
-                    {/* CIRUGÍA – OBLIGATORIA */}
+                    {/* Cirugía */}
                     <Text style={styles.label}>Cirugía / procedimiento</Text>
                     <TextInput
                       placeholder="Ej. Colecistectomía laparoscópica"
@@ -572,82 +794,72 @@ export default function AgregarSolicitudModal({
                     />
                     <View style={styles.errorContainer}>
                       {!!errores.cirugia && (
-                        <Text
-                          style={styles.errorText}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
-                        >
+                        <Text style={styles.errorText} numberOfLines={2} ellipsizeMode="tail">
                           {errores.cirugia}
                         </Text>
                       )}
                     </View>
 
-                    {mostrarResultadosCirugia &&
-                      cirugia.trim() !== "" && (
-                        <View style={styles.smallListContainer}>
-                          <ScrollView>
-                            {cirugiasFiltradas.length === 0 ? (
-                              <View style={styles.item}>
-                                <Text>No hay coincidencias</Text>
-                              </View>
-                            ) : (
-                              cirugiasFiltradas.map((c) => (
-                                <TouchableOpacity
-                                  key={c.id}
-                                  style={styles.item}
-                                  onPress={() => {
-                                    setCirugia(c.nombre);
-                                    setMostrarResultadosCirugia(false);
-                                  }}
-                                >
-                                  <Text>{c.nombre}</Text>
-                                </TouchableOpacity>
-                              ))
-                            )}
-                          </ScrollView>
-                        </View>
-                      )}
+                    {mostrarResultadosCirugia && cirugia.trim() !== "" && (
+                      <View style={styles.smallListContainer}>
+                        <ScrollView>
+                          {cirugiasFiltradas.length === 0 ? (
+                            <View style={styles.item}>
+                              <Text>No hay coincidencias</Text>
+                            </View>
+                          ) : (
+                            cirugiasFiltradas.map((c) => (
+                              <TouchableOpacity
+                                key={c.id}
+                                style={styles.item}
+                                onPress={() => {
+                                  setCirugia(c.nombre);
+                                  setMostrarResultadosCirugia(false);
+                                }}
+                              >
+                                <Text>{c.nombre}</Text>
+                              </TouchableOpacity>
+                            ))
+                          )}
+                        </ScrollView>
+                      </View>
+                    )}
                   </>
                 )}
               </ScrollView>
 
-              {/* DatePicker – sin min/max, solo se valida después */}
-              <DateTimePickerModal
-                isVisible={isDatePickerVisible}
-                mode="date"
-                onConfirm={handleConfirmDate}
-                onCancel={hideDatePicker}
-                textColor="#000"
-                isDarkModeEnabled={false}
+              {/* NUEVOS PICKERS (JS) */}
+              <CalendarModal
+                visible={openCalendar}
+                initialDate={fechaNecesaria}
+                onCancel={() => setOpenCalendar(false)}
+                onConfirm={(d) => {
+                  handleConfirmDateFromCalendar(d);
+                  setOpenCalendar(false);
+                }}
               />
 
-              {/* TimePicker */}
-              <DateTimePickerModal
-                isVisible={isTimePickerVisible}
-                mode="time"
-                onConfirm={handleConfirmTime}
-                onCancel={hideTimePicker}
-                textColor="#000"
-                isDarkModeEnabled={false}
+              <TimePickerModal
+                visible={openClock}
+                initialDate={fechaNecesaria}
+                onCancel={() => setOpenClock(false)}
+                onConfirm={(h, m) => {
+                  handleConfirmTimeFromClock(h, m);
+                  setOpenClock(false);
+                }}
               />
 
-              {/* Botones paso */}
+              {/* Navegación */}
               <View style={styles.navRow}>
                 {paso === 2 && (
-                  <TouchableOpacity
-                    style={[styles.navButton, styles.navBackButton]}
-                    onPress={irAPasoAnterior}
-                  >
+                  <TouchableOpacity style={[styles.navButton, styles.navBackButton]} onPress={irAPasoAnterior}>
                     <Text style={styles.navBackButtonText}>← Atrás</Text>
                   </TouchableOpacity>
                 )}
 
                 {paso === 1 && (
                   <TouchableOpacity
-                    style={[
-                      styles.navButton,
-                      seleccion.length === 0 && styles.navButtonDisabled,
-                    ]}
+                    style={[styles.navButton, seleccion.length === 0 && styles.navButtonDisabled]}
                     disabled={seleccion.length === 0}
                     onPress={irASiguientePaso}
                   >
@@ -656,10 +868,7 @@ export default function AgregarSolicitudModal({
                 )}
 
                 {paso === 2 && (
-                  <TouchableOpacity
-                    style={styles.navButton}
-                    onPress={enviarSolicitud}
-                  >
+                  <TouchableOpacity style={styles.navButton} onPress={enviarSolicitud}>
                     <Text style={styles.navButtonText}>Enviar solicitud</Text>
                   </TouchableOpacity>
                 )}
@@ -676,13 +885,15 @@ export default function AgregarSolicitudModal({
   );
 }
 
+/* ===========================
+   ESTILOS (preservados con mejoras)
+   =========================== */
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     width: "100%",
     justifyContent: "center",
     alignItems: "center",
-    // 👇 sombreado sobre la pantalla de atrás
     backgroundColor: "rgba(0,0,0,0.4)",
   },
   modalContainer: {
@@ -774,13 +985,14 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   addButtonText: { color: "#fff", fontWeight: "bold" },
-  rowInline: { flexDirection: "row", gap: 10 },
+  rowInline: { flexDirection: "row" },
   selectorButton: {
     flex: 1,
     backgroundColor: "#E0F2F1",
     borderRadius: 12,
     padding: 10,
     alignItems: "center",
+    marginRight: 8,
   },
   selectorText: {
     color: "#00695C",
@@ -840,7 +1052,6 @@ const styles = StyleSheet.create({
   destinosContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
     marginTop: 4,
   },
   destinoPill: {
@@ -850,6 +1061,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#B0BEC5",
     backgroundColor: "#FFFFFF",
+    marginRight: 8,
+    marginBottom: 6,
   },
   destinoPillSelected: {
     backgroundColor: "#00BFA5",
@@ -868,4 +1081,93 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#555",
   },
+
+  /* POPUP / PICKER STYLES */
+  popupBackground: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  calendarContainer: {
+    width: "92%",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    maxHeight: "82%",
+  },
+  calendarDay: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 10,
+    marginVertical: 4,
+  },
+  calendarDayMuted: {
+    opacity: 0.35,
+  },
+  calendarDaySelected: {
+    backgroundColor: "#00BFA5",
+    borderRadius: 22,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  calendarDayText: {
+    fontSize: 14,
+  },
+  calendarDayTodayText: {
+    color: "#00A86B",
+    fontWeight: "700",
+  },
+
+  popupButton: {
+    backgroundColor: "#00BFA5",
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 12,
+    alignItems: "center",
+  },
+  popupButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  cancelPopup: {
+    marginTop: 12,
+    textAlign: "center",
+    color: "red",
+    fontWeight: "600",
+  },
+
+  timeContainer: {
+    width: "86%",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    alignItems: "center",
+  },
+  timeOption: {
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  timeOptionSelected: {
+    backgroundColor: "#00BFA5",
+    borderRadius: 8,
+  },
+  timeOptionText: {
+    fontSize: 16,
+  },
+
+  /* small rest kept from original */
+  searchInputSmall: { backgroundColor: "#F1F1F1", borderRadius: 8, padding: 8 },
+
+  /* keep existing original styles below as-is (duplicates removed) */
+  smallListContainer: {
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: "#EEE",
+    marginTop: 4,
+    borderRadius: 12,
+  },
+  
 });

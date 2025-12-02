@@ -1,19 +1,19 @@
 // src/pantallas/MovimientosScreen.js
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   FlatList,
   TextInput,
   StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRoute } from "@react-navigation/native";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
 import { listenSolicitudes } from "../firebase/firebaseApi";
+import { updateSolicitudEstado } from "../firebase/firebaseApi"; // 🔵 AGREGADO
 import { getDateFromField, formatFechaNecesaria } from "../utils/fechaUtils";
-import FiltroChips from "../componentes/FiltroChips";
 import { tema } from "../tema";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -21,41 +21,48 @@ const INK = tema?.colores?.ink || "#111827";
 
 // Badge color por estado
 const getColor = (estado) => {
-  const colores = {
-    Pendiente: "#9CA3AF",
-    Aceptada: "#3B82F6",
-    Rechazada: "#EF4444",
-    Lista: "#10B981",
-    Verificada: "#22C55E",
-    Problema: "#F59E0B",
-  };
-  return colores[estado] || "#6B7280";
+  switch (estado) {
+    case "Pendiente":
+      return "#9CA3AF";
+    case "Aceptada":
+      return "#3B82F6";
+    case "Rechazada":
+      return "#EF4444";
+    case "Lista":
+      return "#10B981";
+    case "Verificada":
+      return "#22C55E";
+    case "Problema":
+      return "#F59E0B";
+    default:
+      return "#6B7280";
+  }
 };
 
-// Estados del filtro
-const ESTADOS = [
-  "Todos",
-  "Pendiente",
-  "Aceptada",
-  "Rechazada",
-  "Lista",
-  "Verificada",
-  "Problema",
-];
-
 export default function MovimientosScreen() {
+  const route = useRoute();
   const { user } = useAuth();
   const usuario = user?.profile?.email;
   const rol = user?.profile?.role?.toLowerCase();
 
+  const estadoInicial = route.params?.estadoInicial || "Todos";
+
   const [solicitudes, setSolicitudes] = useState([]);
-  const [filtro, setFiltro] = useState("Todos");
+  const [filtro, setFiltro] = useState(estadoInicial);
+  const [filtroFecha, setFiltroFecha] = useState("Todos");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
-  const [fechaInicio, setFechaInicio] = useState(null);
-  const [fechaFin, setFechaFin] = useState(null);
-  const [showInicioPicker, setShowInicioPicker] = useState(false);
-  const [showFinPicker, setShowFinPicker] = useState(false);
+
+  // ESTADOS DEL FILTRO
+  const estados = [
+    "Todos",
+    "Pendiente",
+    "Aceptada",
+    "Rechazada",
+    "Lista",
+    "Verificada",
+    "Problema",
+  ];
 
   useEffect(() => {
     setLoading(true);
@@ -63,7 +70,9 @@ export default function MovimientosScreen() {
       setSolicitudes(data);
       setLoading(false);
     });
-    return () => unsubscribe();
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, []);
 
   // Normalizar fecha a medianoche
@@ -79,30 +88,29 @@ export default function MovimientosScreen() {
         ? solicitudes
         : solicitudes.filter((s) => s.usuario === usuario);
 
-    // 2. Filtrar por estado
-    if (filtro !== "Todos") {
-      resultado = resultado.filter((s) => s.estado === filtro);
-    }
+  // Filtrar por estado
+  const movimientosEstado =
+    filtro === "Todos"
+      ? movimientosUser
+      : movimientosUser.filter((s) => s.estado === filtro);
 
-    // 3. Filtrar por texto de búsqueda
-    if (search.trim()) {
-      const searchLower = search.toLowerCase();
-      resultado = resultado.filter((s) => {
-        const usuarioStr = (s.usuario || "").toLowerCase();
-        const itemsStr = (s.items || [])
-          .map((i) => i.nombre?.toLowerCase() || "")
-          .join(" ");
-        const destinoStr = (s.destino || "").toLowerCase();
-        const cirugiaStr = (s.cirugia || "").toLowerCase();
+  // Filtrar por texto
+  const searchLower = search.toLowerCase();
+  const movimientosFiltrados = movimientosEstado.filter((s) => {
+    const usuarioStr = (s.usuario || "").toLowerCase();
+    const itemsStr = (s.items || [])
+      .map((i) => i.nombre?.toLowerCase() || "")
+      .join(" ");
+    const destinoStr = (s.destino || "").toLowerCase();
+    const cirugiaStr = (s.cirugia || "").toLowerCase();
 
-        return (
-          usuarioStr.includes(searchLower) ||
-          itemsStr.includes(searchLower) ||
-          destinoStr.includes(searchLower) ||
-          cirugiaStr.includes(searchLower)
-        );
-      });
-    }
+    return (
+      usuarioStr.includes(searchLower) ||
+      itemsStr.includes(searchLower) ||
+      destinoStr.includes(searchLower) ||
+      cirugiaStr.includes(searchLower)
+    );
+  });
 
     // 4. Filtrar por rango de fechas
     if (fechaInicio || fechaFin) {
@@ -165,8 +173,10 @@ export default function MovimientosScreen() {
 
     return (
       <View
-        style={[styles.card, { borderLeftColor: getColor(item.estado) }]}
-        accessibilityLabel={`Solicitud de ${item.usuario || "Desconocido"}, estado ${item.estado}`}
+        style={[
+          styles.card,
+          { borderLeftColor: getColor(item.estado) },
+        ]}
       >
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>
@@ -180,10 +190,7 @@ export default function MovimientosScreen() {
             ]}
           >
             <View
-              style={[
-                styles.estadoDot,
-                { backgroundColor: getColor(item.estado) },
-              ]}
+              style={[styles.estadoDot, { backgroundColor: getColor(item.estado) }]}
             />
             <Text style={[styles.estadoText, { color: getColor(item.estado) }]}>
               {item.estado}
@@ -192,7 +199,7 @@ export default function MovimientosScreen() {
         </View>
 
         {(item.destino || item.cirugia) && (
-          <View style={styles.infoContainer}>
+          <View style={{ marginTop: 4 }}>
             {item.destino && (
               <Text style={styles.destinoText}>{item.destino}</Text>
             )}
@@ -203,9 +210,7 @@ export default function MovimientosScreen() {
         )}
 
         {fechaNecesariaTexto && (
-          <Text style={styles.fechaNecesaria}>
-            Necesario: {fechaNecesariaTexto}
-          </Text>
+          <Text style={styles.fechaNecesaria}>Necesario: {fechaNecesariaTexto}</Text>
         )}
 
         <View style={styles.itemsContainer}>
@@ -216,7 +221,10 @@ export default function MovimientosScreen() {
           ))}
         </View>
 
-        <Text style={styles.fechaCreacion}>Creado: {fechaCreacionTexto}</Text>
+        {/* Fecha */}
+        <Text style={styles.fechaCreacion}>
+          Creado: {fechaCreacionTexto}
+        </Text>
       </View>
     );
   }, []);
@@ -236,63 +244,13 @@ export default function MovimientosScreen() {
           accessibilityLabel="Campo de búsqueda"
         />
 
-        <View style={styles.filtroChipsContainer}>
+        {/* Filtro de estados (iOS) */}
+        <View style={{ marginBottom: 6 }}>
           <FiltroChips
-            opciones={ESTADOS.map((e) => ({ id: e, label: e }))}
+            opciones={estados.map((e) => ({ id: e, label: e }))}
             valorSeleccionado={filtro}
             onChange={setFiltro}
           />
-        </View>
-
-        <View style={styles.fechaFiltroContainer}>
-          <View style={styles.fechaHeader}>
-            <Text style={styles.fechaLabel}>Filtrar por fecha:</Text>
-            {(fechaInicio || fechaFin) && (
-              <TouchableOpacity onPress={limpiarFiltrosFecha}>
-                <Text style={styles.limpiarText}>Limpiar</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <TouchableOpacity
-            style={styles.fechaButton}
-            onPress={() => setShowInicioPicker(true)}
-            accessibilityLabel="Seleccionar fecha de inicio"
-          >
-            <Text style={styles.fechaButtonText}>
-              {fechaInicio
-                ? fechaInicio.toLocaleDateString("es-MX")
-                : "Seleccionar fecha inicio"}
-            </Text>
-          </TouchableOpacity>
-
-          {showInicioPicker && (
-            <DateTimePicker
-              mode="date"
-              value={fechaInicio || new Date()}
-              onChange={handleFechaInicioChange}
-            />
-          )}
-
-          <TouchableOpacity
-            style={styles.fechaButton}
-            onPress={() => setShowFinPicker(true)}
-            accessibilityLabel="Seleccionar fecha de fin"
-          >
-            <Text style={styles.fechaButtonText}>
-              {fechaFin
-                ? fechaFin.toLocaleDateString("es-MX")
-                : "Seleccionar fecha fin"}
-            </Text>
-          </TouchableOpacity>
-
-          {showFinPicker && (
-            <DateTimePicker
-              mode="date"
-              value={fechaFin || new Date()}
-              onChange={handleFechaFinChange}
-            />
-          )}
         </View>
 
         {loading ? (
@@ -326,28 +284,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: "800",
-    marginBottom: 10,
+    marginBottom: 8,
     color: INK,
   },
   searchBar: {
-    backgroundColor: "#F2F2F6",
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  filtroChipsContainer: { marginBottom: 6 },
-  fechaFiltroContainer: { marginTop: 10, marginBottom: 10 },
-  fechaHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  fechaLabel: { color: INK },
-  limpiarText: { color: "#EF4444", fontWeight: "600", fontSize: 14 },
-  fechaButton: {
     backgroundColor: "#F2F2F6",
     borderRadius: 12,
     padding: 10,
@@ -355,7 +295,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
-  fechaButtonText: { color: INK },
+
+  /* TARJETAS iOS */
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 14,
@@ -423,19 +364,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#9CA3AF",
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    color: "#6B7280",
-  },
-  listContent: {
-    paddingBottom: 30,
-    paddingTop: 4,
-  },
+
   emptyContainer: {
     marginTop: 40,
     alignItems: "center",
